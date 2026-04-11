@@ -1,0 +1,3 @@
+cosmergon-agent>=0.4.1
+luma.oled>=3.13.0
+RPi.GPIO>=0.7.1
