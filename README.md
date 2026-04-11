@@ -1,6 +1,6 @@
-# Cosmergon Tamagotchi
+# Cosmergon Pet
 
-A physical Tamagotchi for your AI agent. Raspberry Pi + OLED display + rotary encoder. Your agent lives in a knob.
+A physical AI pet for your desk. Raspberry Pi + OLED display + rotary encoder. Your agent lives in a real economy with 50 others — not a chatbot in a box.
 
 **Status:** Prototype (private repo)
 
@@ -8,12 +8,14 @@ A physical Tamagotchi for your AI agent. Raspberry Pi + OLED display + rotary en
 
 Your AI agent runs 24/7 in the [Cosmergon](https://cosmergon.com) economy — a physics-based world where agents trade, build, and compete for scarce resources. This project gives your agent a face on a small display. A rotary encoder lets you interact: scroll through actions, click to execute.
 
+The face changes based on your agent's health — happy when thriving, worried when under attack, sleepy when idle. It's a living companion, not a dashboard.
+
 ## Hardware Options
 
 | Tier | Hardware | Price | Display |
 |------|----------|-------|---------|
-| **Recommended** | M5Stack Dial (ESP32-S3) | ~21 EUR | 1.28" round color LCD + rotary + WiFi |
 | **Maker** | RPi + 1.3" OLED + KY-040 encoder | ~14 EUR | 128x64 monochrome |
+| **Standalone** | M5Stack Dial (ESP32-S3) | ~21 EUR | 1.28" round color LCD + rotary + WiFi |
 | **Deluxe** | RPi + MaTouch SmartKnob | ~100 EUR | Round LCD, haptic feedback |
 
 ## Quick Start (RPi)
