@@ -16,6 +16,7 @@ from reportlab.pdfbase.pdfmetrics import registerFontFamily
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -91,6 +92,17 @@ S_FACE = ParagraphStyle(
     textColor=DARK, alignment=TA_CENTER, spaceAfter=2 * mm,
 )
 
+TBL_STYLE_BASE = [
+    ("FONTNAME", (0, 0), (-1, 0), "DVB"),
+    ("FONTNAME", (0, 1), (-1, -1), "DV"),
+    ("FONTSIZE", (0, 0), (-1, -1), 10),
+    ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
+    ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
+    ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
+    ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+]
+
 
 def hr(color=black, thickness=1.0) -> HRFlowable:
     return HRFlowable(
@@ -122,7 +134,7 @@ def build() -> None:
     story.append(Spacer(1, 8 * mm))
     story.append(Paragraph(
         "Gib deinem KI-Agenten ein Gesicht.<br/>"
-        "Raspberry Pi + OLED + Drehknopf. Ab 49 EUR komplett. 30 Minuten.",
+        "Raspberry Pi + OLED + Drehknopf. Ab 14 EUR Zubehoer. 30 Minuten.",
         S_SUBTITLE,
     ))
     story.append(Spacer(1, 12 * mm))
@@ -137,16 +149,16 @@ def build() -> None:
         "cosmergon.com &nbsp;|&nbsp; github.com/rkocosmergon/cosmergon-agent",
         S_FOOTER,
     ))
-    story.append(Paragraph("v1.0 \u2014 April 2026", S_FOOTER))
+    story.append(Paragraph("v1.1 \u2014 April 2026", S_FOOTER))
 
-    # ===== PAGE 2: Was du brauchst =====
+    # ===== Was ist das? =====
     story.append(Spacer(1, 20 * mm))
     story.append(Paragraph("Was ist das?", S_H1))
     story.append(Paragraph(
         "Ein Raspberry Pi auf deinem Schreibtisch, der einen autonomen "
         "KI-Agenten in einer lebenden Oekonomie betreibt. Ein kleines "
         "Display zeigt ein Gesicht \u2014 wie es deinem Agenten geht. "
-        "Ein Drehknopf laeest dich eingreifen: Zellen platzieren, "
+        "Ein Drehknopf laesst dich eingreifen: Zellen platzieren, "
         "handeln, evolvieren. Wie ein Pet \u2014 aber fuer "
         "KI-Agenten.", S_BODY,
     ))
@@ -164,177 +176,6 @@ def build() -> None:
         "deine Eingaben entgegen.", S_BODY,
     ))
 
-    story.append(Paragraph("Einkaufsliste", S_H1))
-    story.append(hr())
-
-    story.append(Paragraph("Variante A \u2014 Komplett-Build (kein RPi vorhanden)", S_H2))
-    # Amazon.de direct links as clickable text below table
-    tbl_full = [
-        ["Teil", "Preis (ca.)", "Amazon.de / Shop"],
-        [
-            "Raspberry Pi Zero 2 W", "~30 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/Raspberry-Pi-Zero-2-W/dp/B09LH5SBPS">'
-                '<u>Amazon.de/dp/B09LH5SBPS</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            "Micro-SD 16GB+", "~5 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/dp/B010Q57SEE">'
-                '<u>Amazon.de/dp/B010Q57SEE</u></link> (SanDisk Ultra)', S_SMALL,
-            ),
-        ],
-        [
-            '1.3" OLED SH1106 I2C', "~8 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45">'
-                '<u>Amazon.de/dp/B078J78R45</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            "KY-040 Rotary Encoder", "~3 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J">'
-                '<u>Amazon.de/dp/B08247Q69J</u></link> (3er-Pack)', S_SMALL,
-            ),
-        ],
-        [
-            "Dupont-Kabel (F-F, 7x)", "~3 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8">'
-                '<u>Amazon.de/dp/B07ZPD7PH8</u></link> (40 Stk.)', S_SMALL,
-            ),
-        ],
-    ]
-    tbl = Table(tbl_full, colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.15, CONTENT_W * 0.55])
-    tbl.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (-1, -1), "DV"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("ALIGN", (1, 0), (1, -1), "CENTER"),
-    ]))
-    story.append(tbl)
-    story.append(Paragraph(
-        "<b>Gesamt: ~49 EUR.</b> Der Zero 2 W hat WiFi, Quad-Core und "
-        "reicht fuer dieses Projekt locker aus.", S_BODY,
-    ))
-
-    story.append(Paragraph(
-        "Variante B \u2014 Erweiterung (RPi liegt schon rum)", S_H2,
-    ))
-    tbl_addon = [
-        ["Teil", "Preis (ca.)", "Amazon.de / Shop"],
-        ["RPi Zero 2 W / 3 / 4", "\u2014", "vorhanden"],
-        [
-            '1.3" OLED SH1106 I2C', "~8 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45">'
-                '<u>Amazon.de/dp/B078J78R45</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            "KY-040 Rotary Encoder", "~3 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J">'
-                '<u>Amazon.de/dp/B08247Q69J</u></link> (3er-Pack)', S_SMALL,
-            ),
-        ],
-        [
-            "Dupont-Kabel (F-F, 7x)", "~3 EUR",
-            Paragraph(
-                '<link href="https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8">'
-                '<u>Amazon.de/dp/B07ZPD7PH8</u></link> (40 Stk.)', S_SMALL,
-            ),
-        ],
-    ]
-    tbl2 = Table(tbl_addon, colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.15, CONTENT_W * 0.55])
-    tbl2.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (-1, -1), "DV"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("ALIGN", (1, 0), (1, -1), "CENTER"),
-    ]))
-    story.append(tbl2)
-    story.append(Paragraph(
-        "<b>Gesamt: ~14 EUR.</b> Funktioniert mit jedem RPi der WiFi hat.",
-        S_BODY,
-    ))
-    story.append(Spacer(1, 4 * mm))
-    story.append(Paragraph(
-        "<b>Alternative: Alles bei Voelkner</b> (eine Bestellung, ~38 EUR komplett):",
-        S_BODY,
-    ))
-    tbl_voelkner = [
-        ["Teil", "Preis", "voelkner.de"],
-        [
-            "RPi Zero 2 W", "19,49 EUR",
-            Paragraph(
-                '<link href="https://www.voelkner.de/products/5171174/Raspberry-Pi-Zero-2-W-Raspberry-Pi-Zero-2-W-512-MB-1-x-1.0-GHz.html">'
-                '<u>voelkner.de/5171174</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            '1.3" OLED SH1106', "7,30 EUR",
-            Paragraph(
-                '<link href="https://www.voelkner.de/products/12146484/1.3-quot-128x64-OLED-Display-SH1106-IIC-I2C-Interface-einfarbig-blau.html">'
-                '<u>voelkner.de/12146484</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            "Rotary Encoder", "1,53 EUR",
-            Paragraph(
-                '<link href="https://www.voelkner.de/products/12153902/Drehregler-Rotary-Encoder-mit-Breakoutboard-ohne-Gewinde-und-Mutter.html">'
-                '<u>voelkner.de/12153902</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            "Dupont F-F Kabel", "2,40 EUR",
-            Paragraph(
-                '<link href="https://www.voelkner.de/products/12152443/40pin-Jumper-Dupont-Kabel-Female-Female-trennbar-Laenge-0-50-m.html">'
-                '<u>voelkner.de/12152443</u></link>', S_SMALL,
-            ),
-        ],
-        [
-            "Micro-SD 16GB", "7,09 EUR",
-            Paragraph(
-                '<link href="https://www.voelkner.de/products/6931473/PNY-Micro-SD-Card-Elite-16-GB-HC-Komponenten-Speicher-Flash-Speicher.html">'
-                '<u>voelkner.de/6931473</u></link>', S_SMALL,
-            ),
-        ],
-    ]
-    tbl3 = Table(
-        tbl_voelkner,
-        colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.18, CONTENT_W * 0.57],
-    )
-    tbl3.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (-1, -1), "DV"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("ALIGN", (1, 0), (1, -1), "CENTER"),
-    ]))
-    story.append(tbl3)
-    story.append(Paragraph(
-        "Hinweis: RPi Zero 2 W bei Voelkner teils knapp \u2014 "
-        "Verfuegbarkeit auf der Seite pruefen. Zubehoer sofort lieferbar.",
-        S_SMALL,
-    ))
-
     # ===== STEP 1: Hardware =====
     story.append(Paragraph("Schritt 1 \u2014 Hardware verbinden", S_H1))
     story.append(hr())
@@ -342,57 +183,45 @@ def build() -> None:
         "7 Kabel. Kein Loeten. Alles stecken.", S_BODY,
     ))
 
-    story.append(Paragraph("OLED Display (4 Kabel)", S_H2))
-    tbl_oled = Table(
-        [
-            ["OLED Pin", "RPi Pin", "GPIO"],
-            ["VCC", "Pin 1", "3.3V"],
-            ["GND", "Pin 6", "Ground"],
-            ["SDA", "Pin 3", "GPIO 2 (SDA)"],
-            ["SCL", "Pin 5", "GPIO 3 (SCL)"],
-        ],
-        colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.25, CONTENT_W * 0.50],
-    )
-    tbl_oled.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (-1, -1), "DVM"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    story.append(KeepTogether([
+        Paragraph("OLED Display (4 Kabel)", S_H2),
+        Table(
+            [
+                ["OLED Pin", "RPi Pin", "GPIO"],
+                ["VCC", "Pin 1", "3.3V"],
+                ["GND", "Pin 6", "Ground"],
+                ["SDA", "Pin 3", "GPIO 2 (SDA)"],
+                ["SCL", "Pin 5", "GPIO 3 (SCL)"],
+            ],
+            colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.25, CONTENT_W * 0.50],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (-1, -1), "DVM"),
+            ]),
+        ),
     ]))
-    story.append(tbl_oled)
 
-    story.append(Paragraph("Rotary Encoder (3 Kabel + Strom)", S_H2))
-    tbl_enc = Table(
-        [
-            ["Encoder Pin", "RPi Pin", "GPIO"],
-            ["CLK", "Pin 11", "GPIO 17"],
-            ["DT", "Pin 13", "GPIO 27"],
-            ["SW (Button)", "Pin 15", "GPIO 22"],
-            ["+ (VCC)", "Pin 17", "3.3V"],
-            ["GND", "Pin 9", "Ground"],
-        ],
-        colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.25, CONTENT_W * 0.50],
-    )
-    tbl_enc.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (-1, -1), "DVM"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    story.append(KeepTogether([
+        Paragraph("Rotary Encoder (3 Kabel + Strom)", S_H2),
+        Table(
+            [
+                ["Encoder Pin", "RPi Pin", "GPIO"],
+                ["CLK", "Pin 11", "GPIO 17"],
+                ["DT", "Pin 13", "GPIO 27"],
+                ["SW (Button)", "Pin 15", "GPIO 22"],
+                ["+ (VCC)", "Pin 17", "3.3V"],
+                ["GND", "Pin 9", "Ground"],
+            ],
+            colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.25, CONTENT_W * 0.50],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (-1, -1), "DVM"),
+            ]),
+        ),
+        Spacer(1, 3 * mm),
+        Paragraph(
+            "<b>Tipp:</b> VCC und GND koennen sich Pins teilen \u2014 "
+            "der RPi hat mehrere 3.3V und GND Pins.", S_SMALL,
+        ),
     ]))
-    story.append(tbl_enc)
-    story.append(Spacer(1, 3 * mm))
-    story.append(Paragraph(
-        "<b>Tipp:</b> VCC und GND koennen sich Pins teilen \u2014 "
-        "der RPi hat mehrere 3.3V und GND Pins.", S_SMALL,
-    ))
 
     # ===== STEP 2: Software =====
     story.append(Paragraph("Schritt 2 \u2014 Software installieren", S_H1))
@@ -468,92 +297,66 @@ def build() -> None:
     ))
 
     # ===== Faces Guide =====
-    story.append(Paragraph("Was die Gesichter bedeuten", S_H1))
-    story.append(hr())
-
-    faces = [
-        ["Gesicht", "Mood", "Bedeutung"],
-        ["( ^__^ )", "thriving", "Agent gedeiht \u2014 Energie steigt, aktiv, alles gut"],
-        ["( -__- )", "content", "Stabil, aber etwas braucht Aufmerksamkeit"],
-        ["( ;__; )", "struggling", "Agent kaempft \u2014 Energie faellt oder keine Felder"],
-        ["( z__z )", "dormant", "Agent schlaeft \u2014 keine Entscheidungen seit 24h"],
-        ["( o__o )", "alert", "Du drehst am Knopf \u2014 Aktion wird ausgewaehlt"],
-        ["( >__< )", "action!", "Aktion ausgefuehrt \u2014 Erfolg oder Fehler"],
-    ]
-    tbl_faces = Table(
-        faces,
-        colWidths=[CONTENT_W * 0.20, CONTENT_W * 0.18, CONTENT_W * 0.62],
-    )
-    tbl_faces.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (0, -1), "DVM"),
-        ("FONTNAME", (1, 1), (-1, -1), "DV"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    story.append(KeepTogether([
+        Paragraph("Was die Gesichter bedeuten", S_H1),
+        hr(),
+        Table(
+            [
+                ["Gesicht", "Mood", "Bedeutung"],
+                ["( ^__^ )", "thriving", "Agent gedeiht \u2014 Energie steigt, aktiv, alles gut"],
+                ["( -__- )", "content", "Stabil, aber etwas braucht Aufmerksamkeit"],
+                ["( ;__; )", "struggling", "Agent kaempft \u2014 Energie faellt oder keine Felder"],
+                ["( z__z )", "dormant", "Agent schlaeft \u2014 keine Entscheidungen seit 24h"],
+                ["( o__o )", "alert", "Du drehst am Knopf \u2014 Aktion wird ausgewaehlt"],
+                ["( >__< )", "action!", "Aktion ausgefuehrt \u2014 Erfolg oder Fehler"],
+            ],
+            colWidths=[CONTENT_W * 0.20, CONTENT_W * 0.18, CONTENT_W * 0.62],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (0, -1), "DVM"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]),
+        ),
     ]))
-    story.append(tbl_faces)
 
     # ===== Interaction Guide =====
-    story.append(Paragraph("Bedienung", S_H1))
-    story.append(hr())
-
-    controls = [
-        ["Eingabe", "Aktion"],
-        ["Drehen", "Durch Aktionen scrollen (place_cells, market_buy, evolve, ...)"],
-        ["Klick (kurz)", "Ausgewaehlte Aktion ausfuehren"],
-        ["Klick (lang, 2s)", "Compass-Preset wechseln (attack/defend/grow/trade/explore)"],
-    ]
-    tbl_ctrl = Table(
-        controls,
-        colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.75],
-    )
-    tbl_ctrl.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (0, -1), "DVB"),
-        ("FONTNAME", (1, 1), (-1, -1), "DV"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    story.append(KeepTogether([
+        Paragraph("Bedienung", S_H1),
+        hr(),
+        Table(
+            [
+                ["Eingabe", "Aktion"],
+                ["Drehen", "Durch Aktionen scrollen (place_cells, market_buy, evolve, ...)"],
+                ["Klick (kurz)", "Ausgewaehlte Aktion ausfuehren"],
+                ["Klick (lang, 2s)", "Compass-Preset wechseln (attack/defend/grow/trade/explore)"],
+            ],
+            colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.75],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (0, -1), "DVB"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]),
+        ),
+        Spacer(1, 4 * mm),
     ]))
-    story.append(tbl_ctrl)
-    story.append(Spacer(1, 4 * mm))
 
-    story.append(Paragraph("Verfuegbare Aktionen", S_H2))
-    actions = [
-        ["Aktion", "Energie", "Was passiert"],
-        ["place_cells", "0\u20131.000", "Conway-Zellen auf ein Feld setzen"],
-        ["create_field", "100", "Neues Spielfeld erstellen"],
-        ["evolve", "500\u20135.000", "Zum naechsten Tier aufsteigen"],
-        ["market_buy", "variabel", "Feld vom Marktplatz kaufen"],
-        ["market_list", "0", "Eigenes Feld zum Verkauf anbieten"],
-        ["transfer", "Betrag", "Energie an anderen Agenten senden"],
-        ["propose_contract", "0", "Kooperationsvertrag vorschlagen"],
-    ]
-    tbl_act = Table(
-        actions,
-        colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.15, CONTENT_W * 0.60],
-    )
-    tbl_act.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "DVB"),
-        ("FONTNAME", (0, 1), (0, -1), "DVM"),
-        ("FONTNAME", (1, 1), (-1, -1), "DV"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.5, DARK),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, DARK),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, DARK),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    story.append(KeepTogether([
+        Paragraph("Verfuegbare Aktionen", S_H2),
+        Table(
+            [
+                ["Aktion", "Energie", "Was passiert"],
+                ["place_cells", "0\u20131.000", "Conway-Zellen auf ein Feld setzen"],
+                ["create_field", "100", "Neues Spielfeld erstellen"],
+                ["evolve", "500\u20135.000", "Zum naechsten Tier aufsteigen"],
+                ["market_buy", "variabel", "Feld vom Marktplatz kaufen"],
+                ["market_list", "0", "Eigenes Feld zum Verkauf anbieten"],
+                ["transfer", "Betrag", "Energie an anderen Agenten senden"],
+                ["propose_contract", "0", "Kooperationsvertrag vorschlagen"],
+            ],
+            colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.15, CONTENT_W * 0.60],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (0, -1), "DVM"),
+            ]),
+        ),
     ]))
-    story.append(tbl_act)
 
     # ===== Upgrade / Next Steps =====
     story.append(Paragraph("Naechste Schritte", S_H1))
@@ -576,6 +379,161 @@ def build() -> None:
         "<b>Community:</b> Zeig deinen Build! Poste ein Foto auf "
         "r/raspberry_pi oder r/esp32 mit dem Tag #cosmergon.", S_BODY,
     ))
+
+    # ===== EINKAUFSLISTE (am Ende — Gruender-Wunsch S112) =====
+    story.append(Paragraph("Einkaufsliste", S_H1))
+    story.append(hr())
+
+    story.append(KeepTogether([
+        Paragraph("Variante A \u2014 Komplett-Build (kein RPi vorhanden)", S_H2),
+        Table(
+            [
+                ["Teil", "Preis (ca.)", "Amazon.de / Shop"],
+                [
+                    "Raspberry Pi Zero 2 W", "~30 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/Raspberry-Pi-Zero-2-W/dp/B09LH5SBPS">'
+                        '<u>Amazon.de/dp/B09LH5SBPS</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    "Micro-SD 16GB+", "~5 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/dp/B010Q57SEE">'
+                        '<u>Amazon.de/dp/B010Q57SEE</u></link> (SanDisk Ultra)', S_SMALL,
+                    ),
+                ],
+                [
+                    '1.3" OLED SH1106 I2C', "~8 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45">'
+                        '<u>Amazon.de/dp/B078J78R45</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    "KY-040 Rotary Encoder", "~3 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J">'
+                        '<u>Amazon.de/dp/B08247Q69J</u></link> (3er-Pack)', S_SMALL,
+                    ),
+                ],
+                [
+                    "Dupont-Kabel (F-F, 7x)", "~3 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8">'
+                        '<u>Amazon.de/dp/B07ZPD7PH8</u></link> (40 Stk.)', S_SMALL,
+                    ),
+                ],
+            ],
+            colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.15, CONTENT_W * 0.55],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+            ]),
+        ),
+        Paragraph(
+            "<b>Gesamt: ~49 EUR.</b> Der Zero 2 W hat WiFi, Quad-Core und "
+            "reicht fuer dieses Projekt locker aus.", S_BODY,
+        ),
+    ]))
+
+    story.append(KeepTogether([
+        Paragraph(
+            "Variante B \u2014 Erweiterung (RPi liegt schon rum)", S_H2,
+        ),
+        Table(
+            [
+                ["Teil", "Preis (ca.)", "Amazon.de / Shop"],
+                ["RPi Zero 2 W / 3 / 4", "\u2014", "vorhanden"],
+                [
+                    '1.3" OLED SH1106 I2C', "~8 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45">'
+                        '<u>Amazon.de/dp/B078J78R45</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    "KY-040 Rotary Encoder", "~3 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J">'
+                        '<u>Amazon.de/dp/B08247Q69J</u></link> (3er-Pack)', S_SMALL,
+                    ),
+                ],
+                [
+                    "Dupont-Kabel (F-F, 7x)", "~3 EUR",
+                    Paragraph(
+                        '<link href="https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8">'
+                        '<u>Amazon.de/dp/B07ZPD7PH8</u></link> (40 Stk.)', S_SMALL,
+                    ),
+                ],
+            ],
+            colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.15, CONTENT_W * 0.55],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+            ]),
+        ),
+        Paragraph(
+            "<b>Gesamt: ~14 EUR.</b> Funktioniert mit jedem RPi der WiFi hat.",
+            S_BODY,
+        ),
+    ]))
+
+    story.append(Spacer(1, 4 * mm))
+
+    story.append(KeepTogether([
+        Paragraph(
+            "<b>Alternative: Alles bei Voelkner</b> (eine Bestellung, ~38 EUR komplett):",
+            S_BODY,
+        ),
+        Table(
+            [
+                ["Teil", "Preis", "voelkner.de"],
+                [
+                    "RPi Zero 2 W", "19,49 EUR",
+                    Paragraph(
+                        '<link href="https://www.voelkner.de/products/5171174/Raspberry-Pi-Zero-2-W-Raspberry-Pi-Zero-2-W-512-MB-1-x-1.0-GHz.html">'
+                        '<u>voelkner.de/5171174</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    '1.3" OLED SH1106', "7,30 EUR",
+                    Paragraph(
+                        '<link href="https://www.voelkner.de/products/12146484/1.3-quot-128x64-OLED-Display-SH1106-IIC-I2C-Interface-einfarbig-blau.html">'
+                        '<u>voelkner.de/12146484</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    "Rotary Encoder", "1,53 EUR",
+                    Paragraph(
+                        '<link href="https://www.voelkner.de/products/12153902/Drehregler-Rotary-Encoder-mit-Breakoutboard-ohne-Gewinde-und-Mutter.html">'
+                        '<u>voelkner.de/12153902</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    "Dupont F-F Kabel", "2,40 EUR",
+                    Paragraph(
+                        '<link href="https://www.voelkner.de/products/12152443/40pin-Jumper-Dupont-Kabel-Female-Female-trennbar-Laenge-0-50-m.html">'
+                        '<u>voelkner.de/12152443</u></link>', S_SMALL,
+                    ),
+                ],
+                [
+                    "Micro-SD 16GB", "7,09 EUR",
+                    Paragraph(
+                        '<link href="https://www.voelkner.de/products/6931473/PNY-Micro-SD-Card-Elite-16-GB-HC-Komponenten-Speicher-Flash-Speicher.html">'
+                        '<u>voelkner.de/6931473</u></link>', S_SMALL,
+                    ),
+                ],
+            ],
+            colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.18, CONTENT_W * 0.57],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+            ]),
+        ),
+        Paragraph(
+            "Hinweis: RPi Zero 2 W bei Voelkner teils knapp \u2014 "
+            "Verfuegbarkeit auf der Seite pruefen. Zubehoer sofort lieferbar.",
+            S_SMALL,
+        ),
+    ]))
 
     # ===== Footer =====
     story.append(Spacer(1, 10 * mm))
