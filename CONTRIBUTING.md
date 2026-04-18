@@ -15,10 +15,9 @@ modded and extended. A few things to know before you open a PR.
 
 ## What we welcome
 
-- Hardware variants (M5Stack Dial port, MaTouch SmartKnob, other
-  displays, ESP32 ports)
+- Alternative display or encoder parts that work on the same RPi build
+  (wiring-adjustment + one-line code change, not a new port)
 - Better wiring diagrams (Fritzing files, annotated photos)
-- 3D-printable case designs
 - Translations of the build guide (English, other languages)
 - Troubleshooting entries (bring your real-world pain)
 - New info-screens, menu actions, face variants

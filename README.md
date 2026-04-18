@@ -57,7 +57,6 @@ Output goes to the terminal, keyboard controls replace the rotary knob.
 |---|---|---|---|
 | **Maker** | RPi (any 40-pin) + 1.3" OLED SH1106 I²C + KY-040 encoder | ~14 | If you already own a Pi. Software tested on Zero 2 W, 3, 4, 5. |
 | **Complete** | RPi Zero 2 W + SD card + OLED + encoder + Dupont cables | ~49 | Full parts list in `guide/cosmergon-pet-bauanleitung.pdf`. |
-| **Standalone** | M5Stack Dial (ESP32-S3, round colour LCD + rotary + WiFi) | ~21 | Port to MicroPython is open — PRs welcome. |
 
 ## Project layout
 

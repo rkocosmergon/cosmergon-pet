@@ -37,7 +37,6 @@ body:
       options:
         - Variante A — Komplett-Build (new RPi Zero 2 W)
         - Variante B — Erweiterung (existing RPi)
-        - M5Stack Dial
         - Other / custom
     validations:
       required: true

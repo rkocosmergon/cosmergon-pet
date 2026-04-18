@@ -635,15 +635,6 @@ def build() -> None:
     )
     story.append(
         Paragraph(
-            "<b>M5Stack Dial Variante:</b> F\u00fcr ~21 EUR ein "
-            "eigenst\u00e4ndiges Ger\u00e4t mit rundem Farb-Display + Drehknopf + "
-            "WiFi. Kein RPi n\u00f6tig. M5Stack-Port in Arbeit \u2014 Pull "
-            "Requests willkommen.",
-            S_BODY,
-        )
-    )
-    story.append(
-        Paragraph(
             "<b>Community:</b> Zeig deinen Build. Poste ein Foto in r/raspberry_pi "
             'mit "Cosmergon Pet" im Titel, oder \u00f6ffne eine Discussion im '
             "Repo.",

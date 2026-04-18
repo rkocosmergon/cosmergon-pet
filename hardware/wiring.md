@@ -4,6 +4,10 @@ Same pinout for both variants (they use the same parts). Seven cables,
 no soldering, all female-to-female Dupont connectors plug onto the RPi
 40-pin GPIO header.
 
+![Wiring diagram](wiring.svg)
+
+Regenerate with: `python3 scripts/generate-wiring-svg.py`.
+
 ## OLED Display (4 cables)
 
 ```

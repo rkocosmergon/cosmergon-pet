@@ -12,8 +12,8 @@ body:
           saves a ten-hour rewrite.
         - **Pet scope** is client-side and maker-focused. See
           `CONTRIBUTING.md` → "What we push back on".
-        - **Hardware variants** (M5Stack, MaTouch, other displays) are
-          explicitly welcome.
+        - **Alternative parts** (different OLED model, different encoder)
+          on the same RPi build are welcome.
 
   - type: textarea
     id: problem
@@ -34,11 +34,10 @@ body:
     attributes:
       label: Category
       options:
-        - Hardware variant (new display, encoder, SoC)
+        - Alternative hardware part (display, encoder) — same RPi build
         - Build-guide improvement
         - New info-screen or menu action
         - Translation
-        - 3D-printable case
         - Developer tooling
         - Other
     validations:

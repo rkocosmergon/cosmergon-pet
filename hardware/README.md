@@ -7,10 +7,9 @@ you own and how much you want to spend.
 |---|---|---|---|
 | **Maker** | ~14 | You already own a 40-pin Raspberry Pi | [`bom-maker.md`](bom-maker.md) |
 | **Complete** | ~49 | Nothing on the shelf — buy everything | [`bom-complete.md`](bom-complete.md) |
-| **Standalone** | ~21 | You want no RPi, just a standalone gadget | [`bom-standalone.md`](bom-standalone.md) (placeholder — port in progress) |
 
-Wiring for the Maker and Complete builds (which share the same hardware —
-RPi + OLED + KY-040 encoder): [`wiring.md`](wiring.md).
+Wiring (both builds share the same hardware — RPi + OLED + KY-040 encoder):
+[`wiring.md`](wiring.md) and [`wiring.svg`](wiring.svg).
 
 ## Which RPi model?
 
@@ -23,9 +22,10 @@ something else.
 ## Why not an RPi Pico / ESP32?
 
 The Pet depends on `cosmergon-agent` (Python SDK) and makes HTTP(S) requests
-over WiFi. That's Linux territory. The **Standalone** build maps the same
-idea onto ESP32 (M5Stack Dial) with a dedicated firmware — that port is
-open for contribution, see `cosmergon-pet/issues`.
+over WiFi. That's Linux territory — the RPi Zero 2 W (~30 EUR, smallest
+40-pin Pi with WiFi) is the cheapest entry point. RP2040 / ESP32 ports
+would need a separate implementation (different HTTPS stack, different
+display libraries); none exists in this repo.
 
 ## Shops and prices
 
