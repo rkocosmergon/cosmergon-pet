@@ -51,27 +51,24 @@ jobs:
             # arm-runner-action boots as root and drops us into the repo as
             # cwd. Tests must run as a non-root user, otherwise the cwd=/
             # reproduction trivially succeeds (root can write anywhere),
-            # masking the fix regression check.
-            if ! id pi >/dev/null 2>&1; then
-                useradd -m -s /bin/bash pi
-                passwd -d pi
-            fi
-            echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/010-pi-nopasswd
+            # masking the fix regression check. Pi OS Lite ships with a
+            # locked `pi` account (PAM nologin), so create a fresh user
+            # and use `sudo -u` (ignores nologin) instead of `su -`.
+            useradd -m -s /bin/bash petrunner
+            echo 'petrunner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/010-petrunner
 
-            # Stage the repo inside pi's home so --dev install works from a
-            # pi-owned checkout. (`cp -a` because rsync is not on Pi OS Lite.)
-            mkdir -p /home/pi/cosmergon-pet
-            cp -a . /home/pi/cosmergon-pet/
-            chown -R pi:pi /home/pi/cosmergon-pet
+            # Stage the repo inside the runner user's home so --dev install
+            # works from a user-owned checkout. (`cp -a` because rsync is
+            # not on Pi OS Lite Minimal.)
+            cp -a . /home/petrunner/cosmergon-pet
+            chown -R petrunner:petrunner /home/petrunner/cosmergon-pet
 
-            su - pi -c '
-                set -euxo pipefail
+            sudo -u petrunner -H bash -euxo pipefail -c '
                 cd ~/cosmergon-pet
                 bash install/install.sh --no-systemd --no-i2c --dev
             '
 
-            su - pi -c '
-                set -euxo pipefail
+            sudo -u petrunner -H bash -euxo pipefail -c '
                 cd ~/cosmergon-pet
                 source ~/cosmergon-env/bin/activate
                 python3 tests/test_installer_runtime.py
