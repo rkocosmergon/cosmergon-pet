@@ -6,6 +6,40 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-04-18
+
+### Fixed
+
+- **Systemd unit** now sets `WorkingDirectory=$HOME` and
+  `Environment=HOME=$HOME`. Without them the service inherits the
+  system-mode default cwd (`/`), which a non-root `User=` cannot write
+  to. `lgpio` creates its notification FIFOs (`.lgd-nfy*`) via
+  `getcwd()`, so the service would fail at runtime with:
+  ```
+  xCreatePipe: Can't set permissions (436) for //.lgd-nfy0,
+    No such file or directory
+  FileNotFoundError: [Errno 2] No such file or directory: '.lgd-nfy-3'
+  ```
+  and silently fall back to keyboard input — useless on a headless Pi.
+  Reported as [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1).
+
+### Added
+
+- **`tests/test_installer_runtime.py`** — end-to-end runtime tests
+  covering both failure modes from #1. The suite asserts the service
+  template contains the runtime-environment directives and exercises
+  lgpio's FIFO-creation path from both a writable cwd (must succeed)
+  and `/` (must fail with the exact error signature). Pytest- and
+  standalone-compatible.
+- **`.github/workflows/test-installer.yml`** — CI workflow that runs
+  the installer + runtime tests inside a chroot-based virtualised
+  Raspberry Pi OS Lite (aarch64) environment via
+  [`pguyot/arm-runner-action@v2`](https://github.com/pguyot/arm-runner-action).
+  Every push and PR that touches `install/`, `src/`, `tests/` or
+  `pyproject.toml` now runs the full install flow against a real Pi
+  OS Lite image before anything reaches a maker. The gap that let
+  bug #1 escape twice in a row is now closed.
+
 ## [0.1.2] — 2026-04-18
 
 ### Fixed

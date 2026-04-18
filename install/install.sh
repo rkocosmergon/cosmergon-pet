@@ -196,6 +196,18 @@ log "  $PET_BIN installed"
 # -----------------------------------------------------------------------------
 if [ "$INSTALL_SYSTEMD" = "1" ]; then
     log "Installing systemd unit $SERVICE_FILE"
+    # `WorkingDirectory` and `Environment=HOME=...` are both required because
+    # lgpio's notification pipes (.lgd-nfy*) are created via `getcwd()` — with
+    # a system-mode unit the default cwd is `/`, which a non-root User= cannot
+    # write to. The Pet then fails at runtime with:
+    #   xCreatePipe: Can't set permissions (436) for //.lgd-nfy0,
+    #     No such file or directory
+    #   FileNotFoundError: [Errno 2] No such file or directory: '.lgd-nfy-3'
+    # and falls back to keyboard input — silently useless on a headless Pi.
+    # Setting WorkingDirectory to the install-time $HOME pins the FIFOs into a
+    # writable per-user dir. HOME is also set explicitly because liblgpio
+    # additionally uses $HOME for its secrets file (.lg_secret).
+    # Reported as cosmergon-pet#1.
     sudo tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
 Description=Cosmergon Pet
@@ -204,6 +216,8 @@ Wants=network-online.target
 
 [Service]
 User=${USER}
+WorkingDirectory=${HOME}
+Environment=HOME=${HOME}
 ExecStart=${PET_BIN}
 Restart=always
 RestartSec=10

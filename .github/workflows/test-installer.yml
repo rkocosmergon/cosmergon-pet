@@ -1,0 +1,80 @@
+name: installer e2e (Pi OS Lite aarch64)
+
+# Runs the full installer inside a chroot-based virtualised Raspberry Pi OS
+# Lite (aarch64) environment — same apt repos, same kernel userspace, same
+# Python toolchain as Lashee's Pi 4 on cosmergon-pet#1. Verifies:
+#
+#   1. install.sh runs to completion under aarch64 Pi OS Lite (apt + pip
+#      paths, swig + liblgpio-dev are resolvable from rpi-archive).
+#   2. `import lgpio` works after install — the v0.1.2 build-fix stays green.
+#   3. The generated systemd unit has WorkingDirectory=$HOME and
+#      Environment=HOME=$HOME — the v0.1.3 runtime-fix stays green.
+#   4. `lgpio.notify_open()` succeeds from a writable cwd (reproduces the
+#      original failure path, then exercises the fix).
+#
+# The chroot does not have /dev/gpiochip0, so real hardware-GPIO calls are
+# out of scope here — those are verified only on real Pi hardware by makers.
+# Everything up to the hardware boundary is covered.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - install/**
+      - src/**
+      - pyproject.toml
+      - tests/**
+      - .github/workflows/test-installer.yml
+  pull_request:
+    paths:
+      - install/**
+      - src/**
+      - pyproject.toml
+      - tests/**
+      - .github/workflows/test-installer.yml
+
+jobs:
+  installer-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run installer + tests inside Pi OS Lite aarch64 chroot
+        uses: pguyot/arm-runner-action@v2
+        with:
+          base_image: raspios_lite_arm64:latest
+          cpu: cortex-a53
+          image_additional_mb: 2048
+          copy_artifact_path: tests/last-journal.log
+          copy_artifact_dest: .
+          commands: |
+            set -euo pipefail
+
+            # The runner boots as root inside the chroot; create a pi-like
+            # user so the installer exercises the same User=${USER} path an
+            # end user hits.
+            if ! id pi >/dev/null 2>&1; then
+                useradd -m -s /bin/bash -G sudo pi
+                passwd -d pi
+                echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/010-pi-nopasswd
+            fi
+            chown -R pi:pi /home/pi
+            cp -r $GITHUB_WORKSPACE /home/pi/cosmergon-pet
+            chown -R pi:pi /home/pi/cosmergon-pet
+
+            # Run the installer as 'pi' with --no-systemd (chroot has no
+            # running systemd) and --no-i2c (no raspi-config in chroot for
+            # Pi OS Lite's i2c enable).
+            su - pi -c '
+                cd /home/pi/cosmergon-pet
+                bash install/install.sh --no-systemd --no-i2c --dev
+            '
+
+            # Re-generate the unit file template into /tmp so the test can
+            # assert on it without needing systemd to be installed.
+            su - pi -c '
+                cd /home/pi/cosmergon-pet
+                source ~/cosmergon-env/bin/activate
+                pip install pytest
+                python3 tests/test_installer_runtime.py
+            '
