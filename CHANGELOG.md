@@ -6,6 +6,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-04-18
+
+### Fixed
+
+- **Installer** now apt-installs `swig` and `liblgpio-dev`. `rpi-lgpio`
+  (added in 0.1.1) pulls `lgpio`, which has no prebuilt wheel for
+  aarch64 Raspberry Pi and therefore builds its C extension from
+  source. That build needs **two** things Raspberry Pi OS Lite does
+  not ship by default:
+  - `swig` (generates the Python wrapper), otherwise pip fails with
+    `command 'swig' failed: No such file or directory`;
+  - `liblgpio-dev` (headers + .so to link against `-llgpio`),
+    otherwise the follow-up gcc step fails with
+    `/usr/bin/ld: cannot find -llgpio`.
+  `liblgpio-dev` ships from `archive.raspberrypi.com`, which is
+  enabled by default on every Raspberry Pi OS install. Verified
+  end-to-end by reproducing the swig-missing failure and the
+  liblgpio-missing failure in sequence, then building `lgpio` and
+  `rpi-lgpio` cleanly once both apt packages were in place.
+  Follow-up to [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1).
+
 ## [0.1.1] — 2026-04-18
 
 ### Fixed

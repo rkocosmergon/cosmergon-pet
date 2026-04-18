@@ -108,11 +108,16 @@ fi
 # -----------------------------------------------------------------------------
 # 3. apt packages
 # -----------------------------------------------------------------------------
-log "Installing apt packages (python3-pip, python3-venv, python3-dev, git)"
+log "Installing apt packages (python3-pip, python3-venv, python3-dev, git, swig, liblgpio-dev)"
 sudo apt-get update -qq
-# `git` is required because we pip-install from a git+https:// URL and pip
-# shells out to the git binary. Raspberry Pi OS Lite does not ship with it.
-sudo apt-get install -y -qq python3-pip python3-venv python3-dev git
+# `git` — pip-install from git+https:// shells out to the git binary.
+# `swig` + `liblgpio-dev` — rpi-lgpio pulls lgpio, which has no prebuilt
+# wheel for aarch64 Pi and builds its C extension from source. That build
+# needs swig to generate the Python wrapper AND liblgpio's headers + .so
+# to link against (`-llgpio`). Raspberry Pi OS Lite ships none of these by
+# default (liblgpio-dev comes from archive.raspberrypi.com, which every
+# Pi OS install has enabled).
+sudo apt-get install -y -qq python3-pip python3-venv python3-dev git swig liblgpio-dev
 
 # -----------------------------------------------------------------------------
 # 3b. GPIO / I2C group membership
