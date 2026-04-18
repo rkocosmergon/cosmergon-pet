@@ -6,8 +6,26 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Installer** (`install/install.sh`) now adds `$USER` to the `gpio`,
+  `i2c` and `spi` groups if they're not already a member. Without
+  membership in `gpio`, `GPIO.add_event_detect()` fails at runtime
+  with *"Failed to add edge detection"* and the Pet silently falls
+  back to keyboard input — which is useless when running headless via
+  SSH. Reported as
+  [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1).
+- **Build guide v1.5:** Troubleshooting entry for the GPIO-group issue
+  now uses `$USER` (not hardcoded `pi`), covers the exact error string
+  users see and lists `spi` alongside `gpio` and `i2c`.
+
 ### Added
 
+- `hardware/wiring.svg` — schematic wiring diagram (Raspberry Pi
+  header + OLED + KY-040 encoder, color-coded). Generated via
+  `scripts/generate-wiring-svg.py`.
+- `hardware/images/social-preview.png` (1280×640) — GitHub social
+  preview. Generated via `scripts/generate-social-preview.py`.
 - `SECURITY.md` — vulnerability reporting policy
 - `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1
 - `CONTRIBUTING.md` — PR guide and style
@@ -15,6 +33,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `LICENSE`, `LICENSES/MIT.txt`, `LICENSES/CC-BY-SA-4.0.txt` — dual
   license (MIT for code, CC-BY-SA-4.0 for docs), REUSE-compliant
 - `NOTICE` — trademark usage guidelines
+
+### Removed
+
+- All references to a non-existent M5Stack Dial port (README, hardware
+  docs, build guide, issue templates). The Pet is an RPi build; the
+  repo no longer advertises ports that haven't been written.
 
 ## [0.1.0] — 2026-04-18
 

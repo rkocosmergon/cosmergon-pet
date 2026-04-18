@@ -113,6 +113,32 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq python3-pip python3-venv python3-dev
 
 # -----------------------------------------------------------------------------
+# 3b. GPIO / I2C group membership
+# -----------------------------------------------------------------------------
+# Without these groups, Python can import RPi.GPIO but GPIO.add_event_detect()
+# fails with "Failed to add edge detection" — the Pet then falls back to
+# keyboard input, which is useless headless-via-SSH. Symptom reported in
+# cosmergon-pet#1.
+ADDED_GROUPS=()
+for group in gpio i2c spi; do
+    if ! getent group "$group" >/dev/null 2>&1; then
+        continue  # Group doesn't exist on this system (non-RPi)
+    fi
+    if id -nG "$USER" | tr ' ' '\n' | grep -qx "$group"; then
+        continue  # Already a member
+    fi
+    sudo usermod -aG "$group" "$USER"
+    ADDED_GROUPS+=("$group")
+done
+
+if [ "${#ADDED_GROUPS[@]}" -gt 0 ]; then
+    warn "Added $USER to groups: ${ADDED_GROUPS[*]}"
+    warn "Group membership only takes effect after a new login session."
+    warn "After the installer finishes, log out + in (or reboot) and re-run this installer."
+    warn "The systemd unit will use the new groups on next boot automatically."
+fi
+
+# -----------------------------------------------------------------------------
 # 4. Virtualenv
 # -----------------------------------------------------------------------------
 if [ ! -d "$VENV" ]; then

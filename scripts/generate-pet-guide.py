@@ -209,7 +209,7 @@ def build() -> None:
             S_FOOTER,
         )
     )
-    story.append(Paragraph("v1.4 \u2014 April 2026", S_FOOTER))
+    story.append(Paragraph("v1.5 \u2014 April 2026", S_FOOTER))
 
     # ===== Was ist das? =====
     story.append(Spacer(1, 20 * mm))
@@ -676,9 +676,17 @@ def build() -> None:
     )
     story.append(
         Paragraph(
-            "<b>Permission denied auf /dev/gpiomem oder /dev/i2c-1:</b> User "
-            "nicht in den Gruppen <code>gpio</code> / <code>i2c</code>. Fix: "
-            "<code>sudo usermod -aG gpio,i2c pi</code> und neu einloggen.",
+            "<b>GPIO nicht verfuegbar / Failed to add edge detection / "
+            "Permission denied auf /dev/gpiomem oder /dev/i2c-1:</b> User "
+            "nicht in den Gruppen <code>gpio</code> / <code>i2c</code> / "
+            "<code>spi</code>. Der Installer erledigt das seit v1.5 "
+            "automatisch. Manueller Fix: "
+            "<code>sudo usermod -aG gpio,i2c,spi $USER</code>, dann neu "
+            "einloggen (oder <code>sudo reboot</code>). Pruefen mit "
+            "<code>groups</code> \u2014 die drei Gruppen muessen gelistet "
+            "sein. Erst danach funktioniert der Encoder; sonst faellt das "
+            "Script stumm auf Keyboard-Input zurueck (was headless via SSH "
+            "nichts bringt).",
             S_BODY,
         )
     )
