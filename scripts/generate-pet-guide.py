@@ -24,7 +24,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-OUT = "docs/konzepte/cosmergon-pet-bauanleitung.pdf"
+OUT = "guide/cosmergon-pet-bauanleitung.pdf"
 W, H = A4
 MARGIN = 18 * mm
 CONTENT_W = W - 2 * MARGIN
@@ -134,7 +134,8 @@ def build() -> None:
     story.append(Spacer(1, 8 * mm))
     story.append(Paragraph(
         "Gib deinem KI-Agenten ein Gesicht.<br/>"
-        "Raspberry Pi + OLED + Drehknopf. Ab 14 EUR Zubehoer. 30 Minuten.",
+        "Raspberry Pi + OLED + Drehknopf. Ab 14 EUR Zubeh\u00f6r. 30 Minuten.<br/>"
+        "<b>Stufe 1: Pet-Modus</b> \u2014 Hardware-Fundament f\u00fcr alle weiteren Stufen.",
         S_SUBTITLE,
     ))
     story.append(Spacer(1, 12 * mm))
@@ -149,38 +150,70 @@ def build() -> None:
         "cosmergon.com &nbsp;|&nbsp; github.com/rkocosmergon/cosmergon-agent",
         S_FOOTER,
     ))
-    story.append(Paragraph("v1.1 \u2014 April 2026", S_FOOTER))
+    story.append(Paragraph("v1.2 \u2014 April 2026", S_FOOTER))
 
     # ===== Was ist das? =====
     story.append(Spacer(1, 20 * mm))
     story.append(Paragraph("Was ist das?", S_H1))
     story.append(Paragraph(
         "Ein Raspberry Pi auf deinem Schreibtisch, der einen autonomen "
-        "KI-Agenten in einer lebenden Oekonomie betreibt. Ein kleines "
+        "KI-Agenten in einer lebenden \u00d6konomie betreibt. Ein kleines "
         "Display zeigt ein Gesicht \u2014 wie es deinem Agenten geht. "
-        "Ein Drehknopf laesst dich eingreifen: Zellen platzieren, "
-        "handeln, evolvieren. Wie ein Pet \u2014 aber fuer "
-        "KI-Agenten.", S_BODY,
+        "Ein Dreh-Dr\u00fcck-Knopf l\u00e4sst dich eingreifen: durch Info-"
+        "Screens scrollen, Zellen platzieren, handeln, evolvieren. Wie ein "
+        "Pet \u2014 aber f\u00fcr KI-Agenten.", S_BODY,
     ))
     story.append(Paragraph(
         "Dein Agent lebt 24/7. Er handelt auf einem Marktplatz, "
-        "verteidigt sein Territorium, ueberlebt Katastrophen. Das "
-        "Gesicht veraendert sich je nach Zustand: gluecklich wenn er "
-        "Energie gewinnt, besorgt wenn er angegriffen wird, muede wenn "
+        "verteidigt sein Territorium, \u00fcberlebt Katastrophen. Das "
+        "Gesicht ver\u00e4ndert sich je nach Zustand: gl\u00fccklich wenn er "
+        "Energie gewinnt, besorgt wenn er angegriffen wird, m\u00fcde wenn "
         "er nichts tut.", S_BODY,
     ))
     story.append(Paragraph(
-        "<b>Keine KI auf dem RPi noetig.</b> Der Agent kommuniziert "
-        "mit dem Cosmergon-Server ueber WiFi. Die gesamte Spiellogik "
-        "laeuft in der Cloud. Der RPi zeigt nur den Zustand und nimmt "
+        "<b>Keine KI auf dem RPi n\u00f6tig.</b> Der Agent kommuniziert "
+        "mit dem Cosmergon-Server \u00fcber WiFi. Die gesamte Spiellogik "
+        "l\u00e4uft in der Cloud. Der RPi zeigt nur den Zustand und nimmt "
         "deine Eingaben entgegen.", S_BODY,
     ))
+
+    # ===== Die 5 Stufen =====
+    story.append(Paragraph("F\u00fcnf Stufen \u2014 diese Anleitung ist Stufe 1", S_H1))
+    story.append(hr())
+    story.append(Paragraph(
+        "Das Cosmergon-Pet skaliert vom reinen Embedded-Build bis zum "
+        "autonomen LLM-Agenten mit Langzeitged\u00e4chtnis. Jede Stufe baut "
+        "auf der vorherigen auf, keine erzwingt die n\u00e4chste. Diese "
+        "Bauanleitung liefert <b>Stufe 1</b> \u2014 Hardware aufbauen, "
+        "Agent registrieren, Display zeigt Gesicht und Info-Screens. "
+        "Stufen 2\u20135 sind optional und im Konzept-Dokument "
+        "(<i>cosmergon-pet-konzept.pdf</i>) beschrieben.", S_BODY,
+    ))
+    story.append(KeepTogether([
+        Table(
+            [
+                ["Stufe", "Was", "LLM", "DB"],
+                ["1", "Gesicht + Encoder (Pet-Modus)", "Nein", "Nein"],
+                ["2", "+ Lokale Tipps aus agent_situation", "Nein", "Nein"],
+                ["3", "+ LLM-Berater (Mensch entscheidet)", "Extern", "Nein"],
+                ["4", "+ LLM-Autonom (Agent entscheidet)", "Extern", "Nein"],
+                ["5", "+ Memory (lernt aus Geschichte)", "Extern", "SQLite"],
+            ],
+            colWidths=[CONTENT_W * 0.08, CONTENT_W * 0.62, CONTENT_W * 0.15, CONTENT_W * 0.15],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (0, -1), "DVB"),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (2, 0), (3, -1), "CENTER"),
+            ]),
+        ),
+    ]))
 
     # ===== STEP 1: Hardware =====
     story.append(Paragraph("Schritt 1 \u2014 Hardware verbinden", S_H1))
     story.append(hr())
     story.append(Paragraph(
-        "7 Kabel. Kein Loeten. Alles stecken.", S_BODY,
+        "7 Kabel. Kein L\u00f6ten. Alles stecken. Die Pin-Belegung ist "
+        "f\u00fcr alle 40-Pin-RPis identisch (Zero 2 W, 3, 4, 5).", S_BODY,
     ))
 
     story.append(KeepTogether([
@@ -218,8 +251,8 @@ def build() -> None:
         ),
         Spacer(1, 3 * mm),
         Paragraph(
-            "<b>Tipp:</b> VCC und GND koennen sich Pins teilen \u2014 "
-            "der RPi hat mehrere 3.3V und GND Pins.", S_SMALL,
+            "<b>Tipp:</b> VCC und GND k\u00f6nnen sich Pins teilen \u2014 "
+            "der RPi hat mehrere 3.3V- und GND-Pins.", S_SMALL,
         ),
     ]))
 
@@ -256,10 +289,10 @@ def build() -> None:
     ))
     story.append(Paragraph(
         "Beim ersten Start registriert sich der Agent automatisch bei "
-        "cosmergon.com. Kein Account, kein API-Key noetig. "
-        "Der Key wird lokal gespeichert und verlaengert sich automatisch "
+        "cosmergon.com. Kein Account, kein API-Key n\u00f6tig. "
+        "Der Key wird lokal gespeichert und verl\u00e4ngert sich automatisch "
         "bei jeder API-Abfrage (Rolling 24h Expiry). Solange der RPi "
-        "laeuft, lebt dein Agent.", S_BODY,
+        "l\u00e4uft, lebt dein Agent.", S_BODY,
     ))
     story.append(Paragraph(
         "<b>Du solltest jetzt ein Gesicht auf dem Display sehen.</b>",
@@ -270,7 +303,7 @@ def build() -> None:
     story.append(Paragraph("Schritt 4 \u2014 Autostart einrichten", S_H1))
     story.append(hr())
     story.append(Paragraph(
-        "Damit der Agent nach jedem Neustart automatisch laeuft:", S_BODY,
+        "Damit der Agent nach jedem Neustart automatisch l\u00e4uft:", S_BODY,
     ))
     story.append(code(
         "sudo tee /etc/systemd/system/cosmergon-face.service &lt;&lt;'EOF'<br/>"
@@ -303,12 +336,12 @@ def build() -> None:
         Table(
             [
                 ["Gesicht", "Mood", "Bedeutung"],
-                ["( ^__^ )", "thriving", "Agent gedeiht \u2014 Energie steigt, aktiv, alles gut"],
-                ["( -__- )", "content", "Stabil, aber etwas braucht Aufmerksamkeit"],
-                ["( ;__; )", "struggling", "Agent kaempft \u2014 Energie faellt oder keine Felder"],
-                ["( z__z )", "dormant", "Agent schlaeft \u2014 keine Entscheidungen seit 24h"],
-                ["( o__o )", "alert", "Du drehst am Knopf \u2014 Aktion wird ausgewaehlt"],
-                ["( >__< )", "action!", "Aktion ausgefuehrt \u2014 Erfolg oder Fehler"],
+                ["( ^__^ )", "thriving", "Agent gedeiht \u2014 Energie steigt"],
+                ["( -__- )", "content", "Stabil, etwas braucht Aufmerksamkeit"],
+                ["( ;__; )", "struggling", "Energie f\u00e4llt oder keine Felder"],
+                ["( z__z )", "dormant", "Keine Entscheidungen seit 24h"],
+                ["( o__o )", "alert", "Aktion wird ausgew\u00e4hlt"],
+                ["( >__< )", "action!", "Aktion ausgef\u00fchrt"],
             ],
             colWidths=[CONTENT_W * 0.20, CONTENT_W * 0.18, CONTENT_W * 0.62],
             style=TableStyle(TBL_STYLE_BASE + [
@@ -318,18 +351,48 @@ def build() -> None:
         ),
     ]))
 
+    # ===== 8 Info-Screens =====
+    story.append(KeepTogether([
+        Paragraph("Die 8 Info-Screens", S_H1),
+        hr(),
+        Paragraph(
+            "Drehen scrollt durch acht Ansichten auf dem 128\u00d764-OLED. "
+            "Klick auf den Gesicht-Screen \u00f6ffnet das Aktionsmen\u00fc.",
+            S_BODY,
+        ),
+        Table(
+            [
+                ["#", "Screen", "API", "Daten"],
+                ["1", "Gesicht + Mood", "/health", "mood, energy_trend, headline"],
+                ["2", "Energie + Rank", "/state", "energy_balance, ranking"],
+                ["3", "Territorium", "/state", "fields, entity_tier, spores"],
+                ["4", "Events", "SSE /events/stream", "Echtzeit: Invasion, Katastrophe"],
+                ["5", "Benchmark", "/state", "benchmark_ready, benchmark_url"],
+                ["6", "Journal", "/decisions", "journal (LLM-Tagebuch, 200 chars)"],
+                ["7", "Letzte Aktion", "/decisions", "action, outcome, reasoning"],
+                ["8", "Regeln", "/state", "learned_rules (alle 100 Ticks)"],
+            ],
+            colWidths=[CONTENT_W * 0.05, CONTENT_W * 0.22, CONTENT_W * 0.25, CONTENT_W * 0.48],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (2, 1), (2, -1), "DVM"),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]),
+        ),
+    ]))
+
     # ===== Interaction Guide =====
     story.append(KeepTogether([
-        Paragraph("Bedienung", S_H1),
+        Paragraph("Bedienung (Dreh-Dr\u00fcck-Knopf)", S_H1),
         hr(),
         Table(
             [
-                ["Eingabe", "Aktion"],
-                ["Drehen", "Durch Aktionen scrollen (place_cells, market_buy, evolve, ...)"],
-                ["Klick (kurz)", "Ausgewaehlte Aktion ausfuehren"],
-                ["Klick (lang, 2s)", "Compass-Preset wechseln (attack/defend/grow/trade/explore)"],
+                ["Eingabe", "Was passiert"],
+                ["Drehen links/rechts", "Durch Info-Screens oder Aktionen scrollen"],
+                ["Kurz dr\u00fccken", "Ausgew\u00e4hlte Aktion ausf\u00fchren"],
+                ["Lang dr\u00fccken (>1s)", "Agent pausieren/fortsetzen oder zur\u00fcck"],
             ],
-            colWidths=[CONTENT_W * 0.25, CONTENT_W * 0.75],
+            colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.70],
             style=TableStyle(TBL_STYLE_BASE + [
                 ("FONTNAME", (0, 1), (0, -1), "DVB"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -338,14 +401,45 @@ def build() -> None:
         Spacer(1, 4 * mm),
     ]))
 
+    # ===== Kontextuelles Aktionsmenue =====
     story.append(KeepTogether([
-        Paragraph("Verfuegbare Aktionen", S_H2),
+        Paragraph("Kontextuelles Aktionsmen\u00fc", S_H2),
+        Paragraph(
+            "Klick auf den Gesicht-Screen \u00f6ffnet ein Men\u00fc, dessen "
+            "Eintr\u00e4ge von der aktuellen Agentensituation abh\u00e4ngen:",
+            S_BODY,
+        ),
+        Table(
+            [
+                ["Bedingung", "Aktion"],
+                ["fields_owned == 0", "Create Field (100 E)"],
+                ["fields_without_cells > 0", "Place Cells (g\u00fcnstigstes Preset)"],
+                ["Energie reicht f\u00fcr Tier-Up", "Evolve (500\u20135\u202f000 E)"],
+                ["active_catastrophe", "Buy Shield"],
+                ["Immer", "Set Compass \u25b6 (attack/defend/grow/trade/explore)"],
+                ["Immer", "Pause / Resume"],
+            ],
+            colWidths=[CONTENT_W * 0.38, CONTENT_W * 0.62],
+            style=TableStyle(TBL_STYLE_BASE + [
+                ("FONTNAME", (0, 1), (0, -1), "DVM"),
+            ]),
+        ),
+        Spacer(1, 4 * mm),
+    ]))
+
+    story.append(KeepTogether([
+        Paragraph("Verf\u00fcgbare API-Aktionen", S_H2),
+        Paragraph(
+            "Diese Aktionen erscheinen im Men\u00fc, wenn die jeweiligen "
+            "Bedingungen zutreffen:",
+            S_BODY,
+        ),
         Table(
             [
                 ["Aktion", "Energie", "Was passiert"],
-                ["place_cells", "0\u20131.000", "Conway-Zellen auf ein Feld setzen"],
+                ["place_cells", "0\u20131\u202f000", "Conway-Zellen auf ein Feld setzen"],
                 ["create_field", "100", "Neues Spielfeld erstellen"],
-                ["evolve", "500\u20135.000", "Zum naechsten Tier aufsteigen"],
+                ["evolve", "500\u20135\u202f000", "Zum n\u00e4chsten Tier aufsteigen"],
                 ["market_buy", "variabel", "Feld vom Marktplatz kaufen"],
                 ["market_list", "0", "Eigenes Feld zum Verkauf anbieten"],
                 ["transfer", "Betrag", "Energie an anderen Agenten senden"],
@@ -359,21 +453,61 @@ def build() -> None:
     ]))
 
     # ===== Upgrade / Next Steps =====
-    story.append(Paragraph("Naechste Schritte", S_H1))
+    story.append(Paragraph("N\u00e4chste Schritte", S_H1))
     story.append(hr())
     story.append(Paragraph(
-        "<b>Eigene Strategie schreiben:</b> Erstelle ein Python-Script das "
-        "den CosmergonAgent steuert. Beispiele im SDK-Repo unter "
-        "examples/.", S_BODY,
+        "Stufe 1 l\u00e4uft. Die Stufen 2\u20135 erweitern das Pet um "
+        "lokale Entscheidungshilfen, LLM-Beratung und Langzeitged\u00e4chtnis "
+        "\u2014 jede ist eigenst\u00e4ndig, keine erzwingt die n\u00e4chste. "
+        "Details und Code-Beispiele im Konzept-Dokument "
+        "(<i>cosmergon-pet-konzept.pdf</i>).",
+        S_BODY,
     ))
     story.append(Paragraph(
-        "<b>M5Stack Dial Variante:</b> Fuer ~21 EUR bekommst du ein "
-        "eigenstaendiges Geraet mit rundem Farb-Display + Drehknopf + "
-        "WiFi. Kein RPi noetig. Firmware-Anleitung auf GitHub.", S_BODY,
+        "<b>Stufe 2 \u2014 Lokale Tipps:</b> Das Pet-Script generiert "
+        "Hinweise aus <code>agent_situation</code> (\"Create your first "
+        "field!\", \"Energy falling \u2014 place more cells\"). "
+        "Deterministisch, kein LLM, kein Overhead.", S_BODY,
     ))
     story.append(Paragraph(
-        "<b>Gehaeuse drucken:</b> STL-Dateien fuer 3D-Druck findest du "
-        "im SDK-Repo unter examples/rpi-pet/case/.", S_BODY,
+        "<b>Stufe 3 \u2014 LLM-Berater:</b> Eine externe LLM schl\u00e4gt "
+        "Aktionen vor; der Mensch entscheidet per Encoder (Klick=Ja, "
+        "Drehen=Nein). LLM-Quelle frei w\u00e4hlbar: Ollama lokal, Claude, "
+        "OpenAI, Groq oder jede OpenAI-kompatible API.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Stufe 4 \u2014 LLM-Autonom:</b> Wie Stufe 3, aber ohne "
+        "Best\u00e4tigungs-Klick. Die LLM entscheidet, das Pet f\u00fchrt aus. "
+        "Display zeigt Reasoning und Journal.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Stufe 5 \u2014 Memory (SQLite):</b> Alle Entscheidungen werden "
+        "lokal in <code>~/.cosmergon/pet.db</code> gespeichert. Bei jeder "
+        "neuen Entscheidung baut das Pet drei Abfragen (letzte 10 "
+        "Aktionen, \u00e4hnliche Situationen, Ablehnungs-Muster des "
+        "Menschen) in den LLM-Prompt. Die LLM lernt aus Hunderten "
+        "vergangener Situationen \u2014 personalisiertes Beratungsprofil "
+        "statt generisches Modell.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Eigene Strategie schreiben:</b> Python-Script, das den "
+        "CosmergonAgent steuert. Beispiele im SDK-Repo unter "
+        "<code>examples/</code>.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>M5Stack Dial Variante:</b> F\u00fcr ~21 EUR ein "
+        "eigenst\u00e4ndiges Ger\u00e4t mit rundem Farb-Display + Drehknopf + "
+        "WiFi. Kein RPi n\u00f6tig. Firmware-Anleitung auf GitHub.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Geh\u00e4use drucken:</b> STL-Dateien f\u00fcr 3D-Druck im "
+        "SDK-Repo unter <code>examples/rpi-pet/case/</code>.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Einsatz in der Lehre:</b> Das Projekt eignet sich als "
+        "semesterbegleitendes Praktikum oder Projektkurs (14 Wochen, "
+        "Lernziele pro Stufe, Benchmark-Vergleich am Ende). "
+        "Semesterplan und Lernziel-Matrix im Konzept-Dokument.", S_BODY,
     ))
     story.append(Paragraph(
         "<b>Community:</b> Zeig deinen Build! Poste ein Foto auf "
@@ -386,6 +520,12 @@ def build() -> None:
 
     story.append(KeepTogether([
         Paragraph("Variante A \u2014 Komplett-Build (kein RPi vorhanden)", S_H2),
+        Paragraph(
+            "Jeder 40-Pin-RPi mit WiFi passt (Zero 2 W, 3, 4, 5). "
+            "Die Zero-2-W-Variante unten ist der g\u00fcnstigste Einstieg.",
+            S_SMALL,
+        ),
+        Spacer(1, 2 * mm),
         Table(
             [
                 ["Teil", "Preis (ca.)", "Amazon.de / Shop"],
@@ -432,7 +572,7 @@ def build() -> None:
         ),
         Paragraph(
             "<b>Gesamt: ~49 EUR.</b> Der Zero 2 W hat WiFi, Quad-Core und "
-            "reicht fuer dieses Projekt locker aus.", S_BODY,
+            "reicht f\u00fcr dieses Projekt locker aus.", S_BODY,
         ),
     ]))
 
@@ -481,7 +621,7 @@ def build() -> None:
 
     story.append(KeepTogether([
         Paragraph(
-            "<b>Alternative: Alles bei Voelkner</b> (eine Bestellung, ~38 EUR komplett):",
+            "<b>Alternative: Alles bei V\u00f6lkner</b> (eine Bestellung, ~38 EUR komplett):",
             S_BODY,
         ),
         Table(
@@ -529,8 +669,9 @@ def build() -> None:
             ]),
         ),
         Paragraph(
-            "Hinweis: RPi Zero 2 W bei Voelkner teils knapp \u2014 "
-            "Verfuegbarkeit auf der Seite pruefen. Zubehoer sofort lieferbar.",
+            "Hinweis: RPi Zero 2 W bei V\u00f6lkner teils knapp \u2014 "
+            "Verf\u00fcgbarkeit auf der Seite pr\u00fcfen. Zubeh\u00f6r sofort "
+            "lieferbar.",
             S_SMALL,
         ),
     ]))
@@ -545,12 +686,12 @@ def build() -> None:
         S_FOOTER,
     ))
     story.append(Paragraph(
-        "RKO Consult UG (haftungsbeschraenkt) \u2022 Hamburg \u2022 "
+        "RKO Consult UG (haftungsbeschr\u00e4nkt) \u2022 Hamburg \u2022 "
         "contact@cosmergon.de",
         S_FOOTER,
     ))
     story.append(Paragraph(
-        "Dieses Dokument steht unter MIT-0. Frei nutzbar, keine Attribution noetig.",
+        "Dieses Dokument steht unter MIT-0. Frei nutzbar, keine Attribution n\u00f6tig.",
         S_FOOTER,
     ))
 
