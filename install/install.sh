@@ -155,6 +155,21 @@ source "$VENV/bin/activate"
 python -m pip install --quiet --upgrade pip
 
 # -----------------------------------------------------------------------------
+# 4b. Drop legacy RPi.GPIO if present
+# -----------------------------------------------------------------------------
+# On Raspberry Pi OS Bookworm (Debian 12, kernel >=6.6) RPi.GPIO can read/write
+# pins but GPIO.add_event_detect() fails with "Failed to add edge detection"
+# because the old sysfs GPIO interface (/sys/class/gpio/*) has been removed in
+# favour of the libgpiod character device /dev/gpiochipN. We ship rpi-lgpio,
+# a drop-in namespace-compatible replacement. If a legacy RPi.GPIO is still
+# around from an earlier install, uninstall it so rpi-lgpio owns the RPi.GPIO
+# namespace cleanly. Reported as cosmergon-pet#1.
+if pip show "RPi.GPIO" >/dev/null 2>&1; then
+    log "Removing legacy RPi.GPIO (replaced by rpi-lgpio)"
+    pip uninstall --quiet -y "RPi.GPIO"
+fi
+
+# -----------------------------------------------------------------------------
 # 5. Install Cosmergon Pet
 # -----------------------------------------------------------------------------
 if [ "$DEV_INSTALL" = "1" ]; then

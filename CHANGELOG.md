@@ -6,6 +6,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-18
+
+### Fixed
+
+- **GPIO edge detection on Raspberry Pi OS Bookworm / kernel >=6.6.**
+  Swapped dependency `RPi.GPIO` → `rpi-lgpio`, a drop-in namespace-
+  compatible replacement built on `libgpiod`. The legacy `RPi.GPIO`
+  library cannot register edge interrupts on modern kernels because
+  the `/sys/class/gpio/*` sysfs interface has been removed; the Pet
+  would silently fall back to keyboard input and the rotary encoder
+  did nothing. No code change in `face.py` — same `import RPi.GPIO`
+  call, different backend. Reported as
+  [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1). The
+  installer now also uninstalls any legacy `RPi.GPIO` it finds before
+  reinstalling, so re-running it on an existing system just works.
+
 ### Fixed
 
 - **Installer** (`install/install.sh`) now adds `$USER` to the `gpio`,

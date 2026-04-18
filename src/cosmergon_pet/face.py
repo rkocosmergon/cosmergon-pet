@@ -483,7 +483,7 @@ def make_display(simulate: bool) -> Any:
 
 
 # ----------------------------------------------------------------------------
-# Input-Backends (KY-040 via RPi.GPIO + Keyboard-Simulation)
+# Input-Backends (KY-040 via rpi-lgpio / RPi.GPIO + Keyboard-Simulation)
 # ----------------------------------------------------------------------------
 
 
