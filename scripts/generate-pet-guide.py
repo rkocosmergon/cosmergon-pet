@@ -134,8 +134,7 @@ def build() -> None:
     story.append(Spacer(1, 8 * mm))
     story.append(Paragraph(
         "Gib deinem KI-Agenten ein Gesicht.<br/>"
-        "Raspberry Pi + OLED + Drehknopf. Ab 14 EUR Zubeh\u00f6r. 30 Minuten.<br/>"
-        "<b>Stufe 1: Pet-Modus</b> \u2014 Hardware-Fundament f\u00fcr alle weiteren Stufen.",
+        "Raspberry Pi + OLED + Drehknopf. Ab 14 EUR Zubeh\u00f6r. 30 Minuten.",
         S_SUBTITLE,
     ))
     story.append(Spacer(1, 12 * mm))
@@ -150,7 +149,7 @@ def build() -> None:
         "cosmergon.com &nbsp;|&nbsp; github.com/rkocosmergon/cosmergon-agent",
         S_FOOTER,
     ))
-    story.append(Paragraph("v1.2 \u2014 April 2026", S_FOOTER))
+    story.append(Paragraph("v1.3 \u2014 April 2026", S_FOOTER))
 
     # ===== Was ist das? =====
     story.append(Spacer(1, 20 * mm))
@@ -177,39 +176,67 @@ def build() -> None:
         "deine Eingaben entgegen.", S_BODY,
     ))
 
-    # ===== Die 5 Stufen =====
-    story.append(Paragraph("F\u00fcnf Stufen \u2014 diese Anleitung ist Stufe 1", S_H1))
+    # ===== STEP 1: SD-Karte vorbereiten =====
+    story.append(Paragraph("Schritt 1 \u2014 SD-Karte mit Raspberry Pi OS bespielen", S_H1))
     story.append(hr())
     story.append(Paragraph(
-        "Das Cosmergon-Pet skaliert vom reinen Embedded-Build bis zum "
-        "autonomen LLM-Agenten mit Langzeitged\u00e4chtnis. Jede Stufe baut "
-        "auf der vorherigen auf, keine erzwingt die n\u00e4chste. Diese "
-        "Bauanleitung liefert <b>Stufe 1</b> \u2014 Hardware aufbauen, "
-        "Agent registrieren, Display zeigt Gesicht und Info-Screens. "
-        "Stufen 2\u20135 sind optional und im Konzept-Dokument "
-        "(<i>cosmergon-pet-konzept.pdf</i>) beschrieben.", S_BODY,
+        "Annahme: blanke SD-Karte. Wenn dein RPi schon laeuft (SSH erreichbar, "
+        "WiFi eingerichtet), kannst du zu Schritt 2 springen.", S_BODY,
     ))
-    story.append(KeepTogether([
-        Table(
-            [
-                ["Stufe", "Was", "LLM", "DB"],
-                ["1", "Gesicht + Encoder (Pet-Modus)", "Nein", "Nein"],
-                ["2", "+ Lokale Tipps aus agent_situation", "Nein", "Nein"],
-                ["3", "+ LLM-Berater (Mensch entscheidet)", "Extern", "Nein"],
-                ["4", "+ LLM-Autonom (Agent entscheidet)", "Extern", "Nein"],
-                ["5", "+ Memory (lernt aus Geschichte)", "Extern", "SQLite"],
-            ],
-            colWidths=[CONTENT_W * 0.08, CONTENT_W * 0.62, CONTENT_W * 0.15, CONTENT_W * 0.15],
-            style=TableStyle(TBL_STYLE_BASE + [
-                ("FONTNAME", (0, 1), (0, -1), "DVB"),
-                ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                ("ALIGN", (2, 0), (3, -1), "CENTER"),
-            ]),
-        ),
-    ]))
+    story.append(Paragraph(
+        "<b>Raspberry Pi Imager</b> auf dem Laptop installieren "
+        "(<link href=\"https://www.raspberrypi.com/software/\"><u>raspberrypi.com/software</u></link> "
+        "\u2014 Windows, macOS, Linux). SD-Karte einstecken, Imager oeffnen.",
+        S_BODY,
+    ))
+    story.append(Paragraph("Im Imager einstellen:", S_BODY))
+    story.append(bullet(
+        "<b>Device:</b> den verwendeten RPi (Zero 2 W, 3, 4 oder 5)"
+    ))
+    story.append(bullet(
+        "<b>OS:</b> Raspberry Pi OS Lite (64-bit) \u2014 headless, kein "
+        "Desktop, ~500 MB statt ~3 GB"
+    ))
+    story.append(bullet(
+        "<b>Storage:</b> deine SD-Karte (Achtung: wird geloescht)"
+    ))
+    story.append(Paragraph(
+        "Vor dem Schreiben das Zahnrad-Symbol <b>oder</b> <i>"
+        "Cmd/Ctrl+Shift+X</i> druecken und OS-Customization einstellen:",
+        S_BODY,
+    ))
+    story.append(bullet(
+        "<b>Hostname:</b> z.B. <code>cosmergon-pet</code> \u2014 per "
+        "<code>ssh pi@cosmergon-pet.local</code> erreichbar"
+    ))
+    story.append(bullet(
+        "<b>Username + Passwort:</b> <code>pi</code> + starkes Passwort"
+    ))
+    story.append(bullet(
+        "<b>WiFi:</b> SSID + Passwort + Country (z.B. DE) \u2014 "
+        "der RPi verbindet sich beim ersten Boot automatisch"
+    ))
+    story.append(bullet(
+        "<b>Services \u2192 SSH aktivieren</b> (Passwort-Auth oder eigener "
+        "Public-Key)"
+    ))
+    story.append(bullet(
+        "<b>Locale:</b> Zeitzone + Tastatur"
+    ))
+    story.append(Paragraph(
+        "Schreiben. Nach ~3\u20135 Minuten ist die Karte fertig. In den RPi "
+        "einstecken, Strom dran. Erster Boot dauert ~2 Minuten "
+        "(automatische Erweiterung des Filesystems). Danach vom Laptop aus:",
+        S_BODY,
+    ))
+    story.append(code("ssh pi@cosmergon-pet.local"))
+    story.append(Paragraph(
+        "Die naechsten Schritte laufen auf dem RPi via SSH. Keyboard/Monitor "
+        "am RPi sind nicht noetig.", S_BODY,
+    ))
 
-    # ===== STEP 1: Hardware =====
-    story.append(Paragraph("Schritt 1 \u2014 Hardware verbinden", S_H1))
+    # ===== STEP 2: Hardware =====
+    story.append(Paragraph("Schritt 2 \u2014 Hardware verbinden", S_H1))
     story.append(hr())
     story.append(Paragraph(
         "7 Kabel. Kein L\u00f6ten. Alles stecken. Die Pin-Belegung ist "
@@ -256,8 +283,8 @@ def build() -> None:
         ),
     ]))
 
-    # ===== STEP 2: Software =====
-    story.append(Paragraph("Schritt 2 \u2014 Software installieren", S_H1))
+    # ===== STEP 3: Software =====
+    story.append(Paragraph("Schritt 3 \u2014 Software installieren", S_H1))
     story.append(hr())
 
     story.append(Paragraph("I2C aktivieren", S_H2))
@@ -280,8 +307,8 @@ def build() -> None:
         "cosmergon-agent/main/examples/rpi-pet/cosmergon_face.py"
     ))
 
-    # ===== STEP 3: Start =====
-    story.append(Paragraph("Schritt 3 \u2014 Agent starten", S_H1))
+    # ===== STEP 4: Start =====
+    story.append(Paragraph("Schritt 4 \u2014 Agent starten", S_H1))
     story.append(hr())
     story.append(code(
         "source ~/cosmergon-env/bin/activate<br/>"
@@ -298,9 +325,17 @@ def build() -> None:
         "<b>Du solltest jetzt ein Gesicht auf dem Display sehen.</b>",
         S_BODY,
     ))
+    story.append(Paragraph(
+        "<b>Ohne Hardware testen?</b> Mit dem Flag <code>--simulate</code> "
+        "l\u00e4uft das Script auch ohne OLED und Encoder \u2014 die Ausgabe "
+        "kommt im Terminal. Praktisch f\u00fcr Laptop-Entwicklung oder wenn "
+        "Bauteile noch nicht da sind:",
+        S_BODY,
+    ))
+    story.append(code("python3 ~/cosmergon-pet/cosmergon_face.py --simulate"))
 
-    # ===== STEP 4: Autostart =====
-    story.append(Paragraph("Schritt 4 \u2014 Autostart einrichten", S_H1))
+    # ===== STEP 5: Autostart =====
+    story.append(Paragraph("Schritt 5 \u2014 Autostart einrichten", S_H1))
     story.append(hr())
     story.append(Paragraph(
         "Damit der Agent nach jedem Neustart automatisch l\u00e4uft:", S_BODY,
@@ -452,66 +487,67 @@ def build() -> None:
         ),
     ]))
 
-    # ===== Upgrade / Next Steps =====
-    story.append(Paragraph("N\u00e4chste Schritte", S_H1))
+    # ===== Erweitern & Teilen =====
+    story.append(Paragraph("Erweitern & Teilen", S_H1))
     story.append(hr())
     story.append(Paragraph(
-        "Stufe 1 l\u00e4uft. Die Stufen 2\u20135 erweitern das Pet um "
-        "lokale Entscheidungshilfen, LLM-Beratung und Langzeitged\u00e4chtnis "
-        "\u2014 jede ist eigenst\u00e4ndig, keine erzwingt die n\u00e4chste. "
-        "Details und Code-Beispiele im Konzept-Dokument "
-        "(<i>cosmergon-pet-konzept.pdf</i>).",
-        S_BODY,
-    ))
-    story.append(Paragraph(
-        "<b>Stufe 2 \u2014 Lokale Tipps:</b> Das Pet-Script generiert "
-        "Hinweise aus <code>agent_situation</code> (\"Create your first "
-        "field!\", \"Energy falling \u2014 place more cells\"). "
-        "Deterministisch, kein LLM, kein Overhead.", S_BODY,
-    ))
-    story.append(Paragraph(
-        "<b>Stufe 3 \u2014 LLM-Berater:</b> Eine externe LLM schl\u00e4gt "
-        "Aktionen vor; der Mensch entscheidet per Encoder (Klick=Ja, "
-        "Drehen=Nein). LLM-Quelle frei w\u00e4hlbar: Ollama lokal, Claude, "
-        "OpenAI, Groq oder jede OpenAI-kompatible API.", S_BODY,
-    ))
-    story.append(Paragraph(
-        "<b>Stufe 4 \u2014 LLM-Autonom:</b> Wie Stufe 3, aber ohne "
-        "Best\u00e4tigungs-Klick. Die LLM entscheidet, das Pet f\u00fchrt aus. "
-        "Display zeigt Reasoning und Journal.", S_BODY,
-    ))
-    story.append(Paragraph(
-        "<b>Stufe 5 \u2014 Memory (SQLite):</b> Alle Entscheidungen werden "
-        "lokal in <code>~/.cosmergon/pet.db</code> gespeichert. Bei jeder "
-        "neuen Entscheidung baut das Pet drei Abfragen (letzte 10 "
-        "Aktionen, \u00e4hnliche Situationen, Ablehnungs-Muster des "
-        "Menschen) in den LLM-Prompt. Die LLM lernt aus Hunderten "
-        "vergangener Situationen \u2014 personalisiertes Beratungsprofil "
-        "statt generisches Modell.", S_BODY,
+        "Dein Pet l\u00e4uft. Ab hier bist du frei \u2014 Fork, mod, teile "
+        "deinen Build.", S_BODY,
     ))
     story.append(Paragraph(
         "<b>Eigene Strategie schreiben:</b> Python-Script, das den "
-        "CosmergonAgent steuert. Beispiele im SDK-Repo unter "
+        "CosmergonAgent steuert. Beispiele im SDK-Repo "
+        "(<link href=\"https://github.com/rkocosmergon/cosmergon-agent\">"
+        "<u>github.com/rkocosmergon/cosmergon-agent</u></link>) unter "
         "<code>examples/</code>.", S_BODY,
     ))
     story.append(Paragraph(
         "<b>M5Stack Dial Variante:</b> F\u00fcr ~21 EUR ein "
         "eigenst\u00e4ndiges Ger\u00e4t mit rundem Farb-Display + Drehknopf + "
-        "WiFi. Kein RPi n\u00f6tig. Firmware-Anleitung auf GitHub.", S_BODY,
+        "WiFi. Kein RPi n\u00f6tig. M5Stack-Port in Arbeit \u2014 Pull "
+        "Requests willkommen.", S_BODY,
     ))
     story.append(Paragraph(
-        "<b>Geh\u00e4use drucken:</b> STL-Dateien f\u00fcr 3D-Druck im "
-        "SDK-Repo unter <code>examples/rpi-pet/case/</code>.", S_BODY,
+        "<b>Community:</b> Zeig deinen Build. Poste ein Foto in r/raspberry_pi "
+        "mit \"Cosmergon Pet\" im Titel, oder \u00f6ffne eine Discussion im "
+        "Repo.", S_BODY,
+    ))
+
+    # ===== Troubleshooting =====
+    story.append(Paragraph("Troubleshooting", S_H1))
+    story.append(hr())
+    story.append(Paragraph(
+        "<b>Display bleibt schwarz:</b> I\u00b2C aktiviert? "
+        "<code>sudo raspi-config nonint do_i2c 0</code> + Neustart. "
+        "Danach <code>sudo i2cdetect -y 1</code> muss die Adresse "
+        "<code>0x3c</code> oder <code>0x3d</code> zeigen. Wenn nicht: "
+        "Verdrahtung VCC/GND/SDA/SCL pr\u00fcfen \u2014 Dupont-Kabel "
+        "sitzen manchmal nur halb im Header.", S_BODY,
     ))
     story.append(Paragraph(
-        "<b>Einsatz in der Lehre:</b> Das Projekt eignet sich als "
-        "semesterbegleitendes Praktikum oder Projektkurs (14 Wochen, "
-        "Lernziele pro Stufe, Benchmark-Vergleich am Ende). "
-        "Semesterplan und Lernziel-Matrix im Konzept-Dokument.", S_BODY,
+        "<b>Encoder springt 2 Schritte pro Rastung:</b> Normal f\u00fcr KY-040 "
+        "\u2014 das Script behandelt das. Wenn Scrollen trotzdem zittrig ist: "
+        "lose Kabel pr\u00fcfen, Encoder-Rohpegel direkt testen mit "
+        "<code>gpioinfo</code>.", S_BODY,
     ))
     story.append(Paragraph(
-        "<b>Community:</b> Zeig deinen Build! Poste ein Foto auf "
-        "r/raspberry_pi oder r/esp32 mit dem Tag #cosmergon.", S_BODY,
+        "<b>ModuleNotFoundError: luma:</b> venv nicht aktiviert. "
+        "<code>source ~/cosmergon-env/bin/activate</code> vor dem "
+        "Python-Aufruf \u2014 auch in der systemd-Unit steht der Pfad "
+        "deshalb explizit.", S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Permission denied auf /dev/gpiomem oder /dev/i2c-1:</b> User "
+        "nicht in den Gruppen <code>gpio</code> / <code>i2c</code>. Fix: "
+        "<code>sudo usermod -aG gpio,i2c pi</code> und neu einloggen.",
+        S_BODY,
+    ))
+    story.append(Paragraph(
+        "<b>Agent registriert sich nicht:</b> WiFi pr\u00fcfen "
+        "(<code>ping cosmergon.com</code>). Der erste API-Call erstellt den "
+        "Agent \u2014 scheitert das, zeigt das Script die Fehlermeldung im "
+        "Terminal. F\u00fcr Diagnose ohne Hardware: "
+        "<code>--simulate</code> starten.", S_BODY,
     ))
 
     # ===== EINKAUFSLISTE (am Ende — Gruender-Wunsch S112) =====
@@ -677,23 +713,26 @@ def build() -> None:
     ]))
 
     # ===== Footer =====
-    story.append(Spacer(1, 10 * mm))
-    story.append(hr(DARK, 2))
-    story.append(Paragraph(
-        "cosmergon.com &nbsp;\u2022&nbsp; "
-        "github.com/rkocosmergon/cosmergon-agent &nbsp;\u2022&nbsp; "
-        "PyPI: pip install cosmergon-agent",
-        S_FOOTER,
-    ))
-    story.append(Paragraph(
-        "RKO Consult UG (haftungsbeschr\u00e4nkt) \u2022 Hamburg \u2022 "
-        "contact@cosmergon.de",
-        S_FOOTER,
-    ))
-    story.append(Paragraph(
-        "Dieses Dokument steht unter MIT-0. Frei nutzbar, keine Attribution n\u00f6tig.",
-        S_FOOTER,
-    ))
+    story.append(Spacer(1, 4 * mm))
+    story.append(KeepTogether([
+        hr(DARK, 2),
+        Paragraph(
+            "cosmergon.com &nbsp;\u2022&nbsp; "
+            "github.com/rkocosmergon/cosmergon-agent &nbsp;\u2022&nbsp; "
+            "PyPI: pip install cosmergon-agent",
+            S_FOOTER,
+        ),
+        Paragraph(
+            "RKO Consult UG (haftungsbeschr\u00e4nkt) \u2022 Hamburg \u2022 "
+            "contact@cosmergon.de",
+            S_FOOTER,
+        ),
+        Paragraph(
+            "Dieses Dokument steht unter MIT-0. Frei nutzbar, keine "
+            "Attribution n\u00f6tig.",
+            S_FOOTER,
+        ),
+    ]))
 
     doc.build(story)
     print(f"PDF: {OUT} ({os.path.getsize(OUT) // 1024} KB)")
