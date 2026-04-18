@@ -149,7 +149,7 @@ def build() -> None:
         "cosmergon.com &nbsp;|&nbsp; github.com/rkocosmergon/cosmergon-agent",
         S_FOOTER,
     ))
-    story.append(Paragraph("v1.3 \u2014 April 2026", S_FOOTER))
+    story.append(Paragraph("v1.4 \u2014 April 2026", S_FOOTER))
 
     # ===== Was ist das? =====
     story.append(Spacer(1, 20 * mm))
@@ -291,20 +291,17 @@ def build() -> None:
     story.append(code("sudo raspi-config nonint do_i2c 0"))
     story.append(Paragraph("Danach RPi neustarten.", S_BODY))
 
-    story.append(Paragraph("Display und Agent installieren", S_H2))
+    story.append(Paragraph("Cosmergon Pet installieren", S_H2))
+    story.append(Paragraph(
+        "Eine Zeile installiert das Pet-Paket inklusive aller Abh\u00e4ngigkeiten "
+        "(cosmergon-agent, luma.oled, RPi.GPIO, pillow):",
+        S_BODY,
+    ))
     story.append(code(
-        "sudo apt install -y python3-pip python3-venv<br/>"
+        "sudo apt install -y python3-pip python3-venv python3-dev<br/>"
         "python3 -m venv ~/cosmergon-env<br/>"
         "source ~/cosmergon-env/bin/activate<br/>"
-        "pip install cosmergon-agent luma.oled RPi.GPIO"
-    ))
-
-    story.append(Paragraph("Pet-Script herunterladen", S_H2))
-    story.append(code(
-        "mkdir -p ~/cosmergon-pet<br/>"
-        "cd ~/cosmergon-pet<br/>"
-        "curl -O https://raw.githubusercontent.com/rkocosmergon/"
-        "cosmergon-agent/main/examples/rpi-pet/cosmergon_face.py"
+        "pip install git+https://github.com/rkocosmergon/cosmergon-pet"
     ))
 
     # ===== STEP 4: Start =====
@@ -312,7 +309,7 @@ def build() -> None:
     story.append(hr())
     story.append(code(
         "source ~/cosmergon-env/bin/activate<br/>"
-        "python3 ~/cosmergon-pet/cosmergon_face.py"
+        "cosmergon-pet"
     ))
     story.append(Paragraph(
         "Beim ersten Start registriert sich der Agent automatisch bei "
@@ -332,7 +329,7 @@ def build() -> None:
         "Bauteile noch nicht da sind:",
         S_BODY,
     ))
-    story.append(code("python3 ~/cosmergon-pet/cosmergon_face.py --simulate"))
+    story.append(code("cosmergon-pet --simulate"))
 
     # ===== STEP 5: Autostart =====
     story.append(Paragraph("Schritt 5 \u2014 Autostart einrichten", S_H1))
@@ -341,7 +338,7 @@ def build() -> None:
         "Damit der Agent nach jedem Neustart automatisch l\u00e4uft:", S_BODY,
     ))
     story.append(code(
-        "sudo tee /etc/systemd/system/cosmergon-face.service &lt;&lt;'EOF'<br/>"
+        "sudo tee /etc/systemd/system/cosmergon-pet.service &lt;&lt;'EOF'<br/>"
         "[Unit]<br/>"
         "Description=Cosmergon Pet<br/>"
         "After=network-online.target<br/>"
@@ -349,8 +346,7 @@ def build() -> None:
         "<br/>"
         "[Service]<br/>"
         "User=pi<br/>"
-        "WorkingDirectory=/home/pi/cosmergon-pet<br/>"
-        "ExecStart=/home/pi/cosmergon-env/bin/python cosmergon_face.py<br/>"
+        "ExecStart=/home/pi/cosmergon-env/bin/cosmergon-pet<br/>"
         "Restart=always<br/>"
         "RestartSec=10<br/>"
         "<br/>"
@@ -360,8 +356,8 @@ def build() -> None:
     ))
     story.append(code(
         "sudo systemctl daemon-reload<br/>"
-        "sudo systemctl enable cosmergon-face<br/>"
-        "sudo systemctl start cosmergon-face"
+        "sudo systemctl enable cosmergon-pet<br/>"
+        "sudo systemctl start cosmergon-pet"
     ))
 
     # ===== Faces Guide =====

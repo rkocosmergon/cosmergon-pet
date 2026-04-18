@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cosmergon-pet"
+version = "0.1.0"
+description = "Physical AI pet for Cosmergon agents — Raspberry Pi + OLED + rotary encoder"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "RKO Consult UG (haftungsbeschraenkt)", email = "contact@cosmergon.de" },
+]
+keywords = ["raspberry-pi", "oled", "ai-agent", "cosmergon", "maker", "pet"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+    "Topic :: System :: Hardware",
+]
+dependencies = [
+    "cosmergon-agent>=0.7.0",
+    "luma.oled>=3.13.0",
+    "RPi.GPIO>=0.7.1",
+    "pillow>=10.0.0",
+]
+
+[project.scripts]
+cosmergon-pet = "cosmergon_pet.face:main"
+
+[project.urls]
+Homepage = "https://github.com/rkocosmergon/cosmergon-pet"
+Issues = "https://github.com/rkocosmergon/cosmergon-pet/issues"
+Documentation = "https://github.com/rkocosmergon/cosmergon-pet#readme"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "RUF"]
