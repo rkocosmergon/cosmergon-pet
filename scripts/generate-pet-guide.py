@@ -209,7 +209,7 @@ def build() -> None:
             S_FOOTER,
         )
     )
-    story.append(Paragraph("v1.5 \u2014 April 2026", S_FOOTER))
+    story.append(Paragraph("v1.6 \u2014 April 2026", S_FOOTER))
 
     # ===== Was ist das? =====
     story.append(Spacer(1, 20 * mm))
@@ -267,8 +267,13 @@ def build() -> None:
     story.append(bullet("<b>Device:</b> den verwendeten RPi (Zero 2 W, 3, 4 oder 5)"))
     story.append(
         bullet(
-            "<b>OS:</b> Raspberry Pi OS Lite (64-bit) \u2014 headless, kein "
-            "Desktop, ~500 MB statt ~3 GB"
+            "<b>OS:</b> Raspberry Pi OS Lite (64-bit) \u2014 "
+            "<b>nicht das Default oben in der Liste.</b> Pfad im Imager: "
+            "<i>Choose OS \u2192 Raspberry Pi OS (other) \u2192 "
+            "Raspberry Pi OS Lite (64-bit)</i>. Headless, kein Desktop, "
+            "~500 MB statt ~3 GB. Die Desktop-Variante startet unnoetige "
+            "Services beim Boot, die gelegentlich SD-Korruptionen nach "
+            "dem ersten Reboot verursachen."
         )
     )
     story.append(bullet("<b>Storage:</b> deine SD-Karte (Achtung: wird geloescht)"))
