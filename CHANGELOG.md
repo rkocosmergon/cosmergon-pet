@@ -21,9 +21,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Build guide v1.6:** Step 1 (SD card) OS bullet now spells out the
   Imager path — "Raspberry Pi OS Lite (64-bit)" lives under
   *Choose OS → Raspberry Pi OS (other)*, not in the default list.
-  A Desktop-variant install starts extra boot-time services that occasionally
-  cause SD corruption on first reboot; Lite avoids that surface area.
-  Maker-reported hiccup on
+  Note that the Pet is built and tested against Lite, not the Desktop
+  variant. Maker-reported hiccup on
   [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1).
 
 ### Added

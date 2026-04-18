@@ -271,9 +271,8 @@ def build() -> None:
             "<b>nicht das Default oben in der Liste.</b> Pfad im Imager: "
             "<i>Choose OS \u2192 Raspberry Pi OS (other) \u2192 "
             "Raspberry Pi OS Lite (64-bit)</i>. Headless, kein Desktop, "
-            "~500 MB statt ~3 GB. Die Desktop-Variante startet unnoetige "
-            "Services beim Boot, die gelegentlich SD-Korruptionen nach "
-            "dem ersten Reboot verursachen."
+            "~500 MB statt ~3 GB. Die Pet-Software ist gegen Lite gebaut "
+            "und getestet."
         )
     )
     story.append(bullet("<b>Storage:</b> deine SD-Karte (Achtung: wird geloescht)"))
