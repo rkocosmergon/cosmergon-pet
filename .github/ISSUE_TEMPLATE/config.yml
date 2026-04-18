@@ -1,0 +1,22 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/rkocosmergon/cosmergon-pet/security/advisories/new
+    about: Use GitHub's private security advisory flow, or email security@cosmergon.de. Don't open a public issue.
+
+  - name: Cosmergon SDK / API issue
+    url: https://github.com/rkocosmergon/cosmergon-agent/issues
+    about: Bugs in the Python SDK or the Cosmergon API go there, not here.
+
+  - name: Cosmergon economy / backend issue
+    url: https://cosmergon.com/contact
+    about: Questions about the game economy, account, billing, or the backend — use the contact form on cosmergon.com.
+
+  - name: General questions, ideas, show-and-tell
+    url: https://github.com/rkocosmergon/cosmergon-pet/discussions
+    about: For "how do I do X?", build photos, and rough brainstorming, use Discussions.
+
+  - name: Trademark usage questions
+    url: mailto:contact@cosmergon.de
+    about: See NOTICE for usage guidelines first, then email if you need written permission.

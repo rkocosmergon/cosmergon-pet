@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a new feature, hardware variant or build-guide improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea? Great. A few notes before you type:
+
+        - **Open an issue first**, before writing code. A ten-minute chat
+          saves a ten-hour rewrite.
+        - **Pet scope** is client-side and maker-focused. See
+          `CONTRIBUTING.md` → "What we push back on".
+        - **Hardware variants** (M5Stack, MaTouch, other displays) are
+          explicitly welcome.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem you're trying to solve?
+      description: The use case, not the solution. "I want to use a different OLED" is fine; "we need support for SSD1306" jumps to a solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What do you have in mind?
+      description: Rough sketch, code snippet, API shape, wiring diagram — whatever shape your idea has.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Hardware variant (new display, encoder, SoC)
+        - Build-guide improvement
+        - New info-screen or menu action
+        - Translation
+        - 3D-printable case
+        - Developer tooling
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: trademark
+    attributes:
+      label: Trademark acknowledgement (only if this is a fork / derivative)
+      options:
+        - label: "If I fork for my own product, I've read `NOTICE` and will rename accordingly."

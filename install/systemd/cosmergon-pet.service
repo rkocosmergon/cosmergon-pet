@@ -1,0 +1,20 @@
+[Unit]
+Description=Cosmergon Pet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Replace 'pi' with your username if different.
+User=pi
+ExecStart=/home/pi/cosmergon-env/bin/cosmergon-pet
+Restart=always
+RestartSec=10
+
+# Optional: run with --log-level INFO for more detail in journald
+# ExecStart=/home/pi/cosmergon-env/bin/cosmergon-pet --log-level INFO
+
+# Optional: override Cosmergon base URL (defaults to cosmergon.com)
+# Environment=COSMERGON_BASE_URL=https://cosmergon.com
+
+[Install]
+WantedBy=multi-user.target

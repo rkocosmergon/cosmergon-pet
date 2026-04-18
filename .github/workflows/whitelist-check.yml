@@ -1,0 +1,38 @@
+name: Whitelist check
+
+# Blocking gate: verhindert dass Business-Interna, Infrastruktur-
+# Details oder nicht-whitelistete Pfade ins Maker-Repo einziehen.
+# Laeuft auf jedem Push und jedem Pull-Request. Exit != 0 bricht.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  whitelist:
+    name: Whitelist + keyword scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run whitelist check
+        run: bash scripts/check-whitelist.sh
+
+      - name: Summary on success
+        if: success()
+        run: echo "::notice::Whitelist check passed — no banned paths or keywords."
+
+      - name: Summary on failure
+        if: failure()
+        run: |
+          echo "::error::Whitelist check failed. See output above."
+          echo "::error::Whitelist is expanded only with maintainer review — see CONTRIBUTING.md."

@@ -1,0 +1,52 @@
+NOTICE — Trademark Usage
+========================
+
+"Cosmergon" and "Cosmergon Pet" are trademarks of
+RKO Consult UG (haftungsbeschränkt), Hamburg, Germany.
+
+German trademark application (DPMA, Deutsches Patent- und Markenamt)
+was filed on 2026-04-09 for classes 9 (software) and 42 (SaaS /
+software-as-a-service). Registration is pending at the time of this
+release.
+
+The MIT license granted for the software in this repository and the
+CC-BY-SA-4.0 license for the documentation do NOT grant any rights
+to use the Cosmergon marks beyond what is permitted under trademark
+law (nominative fair use).
+
+Permitted (nominative fair use)
+-------------------------------
+
+- Reference this project as "Cosmergon Pet" in articles, blog posts,
+  talks, tutorials and derivative documentation.
+- Describe your own project as "based on Cosmergon Pet",
+  "compatible with Cosmergon Pet", "Cosmergon Pet fork" or similar
+  factual statements.
+- Use screenshots, ASCII faces and reproductions of the hardware
+  build in derivative works, subject to the CC-BY-SA-4.0 license on
+  documentation.
+
+Not permitted without written permission
+----------------------------------------
+
+- Naming a forked or derivative product "Cosmergon <anything>" in a
+  way that suggests the fork is the official Cosmergon project.
+- Using "Cosmergon" as the primary brand for your own unrelated
+  product, service or company.
+- Registering domains, trademarks, company names, social media
+  handles or package names containing "Cosmergon".
+- Displaying the Cosmergon word mark on commercial merchandise
+  (T-shirts, stickers, hardware kits sold for profit) without
+  written permission.
+
+Questions regarding trademark use: contact@cosmergon.de
+
+Copyright holder
+----------------
+
+RKO Consult UG (haftungsbeschränkt)
+Alte Elbgaustraße 18
+22523 Hamburg, Germany
+
+Amtsgericht Hamburg HRB 151537
+USt-IdNr. DE317746664

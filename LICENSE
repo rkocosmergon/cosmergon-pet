@@ -1,0 +1,22 @@
+# License
+
+Cosmergon Pet is dual-licensed, following the
+[REUSE Specification](https://reuse.software/):
+
+- **Software** — source code, scripts, installer, packaging config:
+  MIT License.
+  Applies to: `src/**`, `scripts/**`, `install/**`, `pyproject.toml`.
+  Full text: [`LICENSES/MIT.txt`](LICENSES/MIT.txt).
+
+- **Documentation & hardware guides** — build guides, README, hardware
+  BOMs, diagrams, photos, ASCII faces and any other non-code content:
+  Creative Commons Attribution-ShareAlike 4.0 International
+  (CC-BY-SA-4.0).
+  Applies to: `README.md`, `docs/**`, `guide/**`, `hardware/**`,
+  `*.md` at repo root except this `LICENSE`.
+  Full text: [`LICENSES/CC-BY-SA-4.0.txt`](LICENSES/CC-BY-SA-4.0.txt).
+
+Copyright © 2026 RKO Consult UG (haftungsbeschränkt), Hamburg, Germany.
+
+"Cosmergon" is a trademark of RKO Consult UG. Trademark usage is
+governed by [`NOTICE`](NOTICE), not by the licenses above.

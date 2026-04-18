@@ -1,43 +1,104 @@
 # Cosmergon Pet
 
-A physical AI pet for your desk. Raspberry Pi + OLED display + rotary encoder. Your agent lives in a real economy with 50 others — not a chatbot in a box.
+**A physical companion for an autonomous AI agent.**
+Raspberry Pi + small OLED + rotary encoder = a face on your desk that
+reflects how your agent is doing in the [Cosmergon](https://cosmergon.com)
+economy. Not a chatbot in a box. Not a dashboard.
 
-**Status:** Prototype (private repo)
+```
+   ( ^__^ )        ( -__- )        ( ;__; )        ( z__z )
+    thriving        content          struggling        dormant
+```
 
-## What is this?
+Your agent lives 24/7 on the Pi. It trades, defends its territory,
+survives catastrophes. The face changes with its state. A rotary knob
+lets you poke at it: scroll through info screens, choose an action,
+click to execute.
 
-Your AI agent runs 24/7 in the [Cosmergon](https://cosmergon.com) economy — a physics-based world where agents trade, build, and compete for scarce resources. This project gives your agent a face on a small display. A rotary encoder lets you interact: scroll through actions, click to execute.
+## At a glance
 
-The face changes based on your agent's health — happy when thriving, worried when under attack, sleepy when idle. It's a living companion, not a dashboard.
+- **~14 EUR** of parts if you already own any 40-pin Raspberry Pi
+- **~49 EUR** for a complete build from scratch (Pi Zero 2 W + peripherals)
+- **7 wires, no soldering** — everything plugs into the GPIO header
+- **30 minutes** from blank SD card to a face on the display
+- **No account, no API key** — the agent auto-registers on first start
+- **Headless install** — build guide uses Raspberry Pi Imager + SSH,
+  no keyboard/monitor on the Pi
 
-## Hardware Options
-
-| Tier | Hardware | Price | Display |
-|------|----------|-------|---------|
-| **Maker** | RPi + 1.3" OLED + KY-040 encoder | ~14 EUR | 128x64 monochrome |
-| **Standalone** | M5Stack Dial (ESP32-S3) | ~21 EUR | 1.28" round color LCD + rotary + WiFi |
-| **Deluxe** | RPi + MaTouch SmartKnob | ~100 EUR | Round LCD, haptic feedback |
-
-## Quick Start (RPi)
+## Quick start
 
 ```bash
-pip install cosmergon-agent luma.oled RPi.GPIO
-python3 rpi/cosmergon_face.py
+# On a Raspberry Pi running fresh Raspberry Pi OS Lite (64-bit):
+sudo raspi-config nonint do_i2c 0 && sudo reboot
+sudo apt install -y python3-pip python3-venv python3-dev
+python3 -m venv ~/cosmergon-env
+source ~/cosmergon-env/bin/activate
+pip install git+https://github.com/rkocosmergon/cosmergon-pet
+cosmergon-pet
 ```
 
-Your agent auto-registers. No API key needed. The key refreshes automatically — your agent lives as long as the RPi has power.
+Step-by-step build guide (hardware, wiring, SD card, autostart,
+troubleshooting):
+[`guide/cosmergon-pet-bauanleitung.pdf`](guide/cosmergon-pet-bauanleitung.pdf).
 
-## Project Structure
+### No hardware yet?
+
+The Pet runs without display or encoder for testing:
+
+```bash
+cosmergon-pet --simulate
+```
+
+Output goes to the terminal, keyboard controls replace the rotary knob.
+
+## Hardware options
+
+| Build | Parts | Price (EUR) | Notes |
+|---|---|---|---|
+| **Maker** | RPi (any 40-pin) + 1.3" OLED SH1106 I²C + KY-040 encoder | ~14 | If you already own a Pi. Software tested on Zero 2 W, 3, 4, 5. |
+| **Complete** | RPi Zero 2 W + SD card + OLED + encoder + Dupont cables | ~49 | Full parts list in `guide/cosmergon-pet-bauanleitung.pdf`. |
+| **Standalone** | M5Stack Dial (ESP32-S3, round colour LCD + rotary + WiFi) | ~21 | Port to MicroPython is open — PRs welcome. |
+
+## Project layout
 
 ```
-rpi/        RPi + OLED + Encoder (Python)
-dial/       M5Stack Dial standalone (MicroPython, coming soon)
-guide/      Build guide PDF
-case/       3D print files (coming soon)
+src/cosmergon_pet/      The Pet software (Python)
+install/                requirements + (later) install.sh, systemd
+hardware/               Wiring tables, BOMs (markdown)
+guide/                  Build guide (PDF)
+docs/                   Getting started, troubleshooting, FAQ
+scripts/                Build-guide generator, repo tooling
+.github/                Issue templates, PR template, CI workflows
 ```
 
 ## Links
 
-- [Cosmergon](https://cosmergon.com) — The living economy
-- [SDK](https://github.com/rkocosmergon/cosmergon-agent) — Python SDK
-- [PyPI](https://pypi.org/project/cosmergon-agent/) — `pip install cosmergon-agent`
+- **Cosmergon** — the economy your agent lives in:
+  [cosmergon.com](https://cosmergon.com)
+- **Python SDK** the Pet depends on:
+  [github.com/rkocosmergon/cosmergon-agent](https://github.com/rkocosmergon/cosmergon-agent)
+  (`pip install cosmergon-agent`)
+- **Build guide PDF**:
+  [`guide/cosmergon-pet-bauanleitung.pdf`](guide/cosmergon-pet-bauanleitung.pdf)
+
+## Contributing
+
+Pull requests, hardware variants, translations and troubleshooting
+entries are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for
+guidelines, code style and the PR checklist.
+
+If you found a security issue, please read [`SECURITY.md`](SECURITY.md)
+— do not open a public issue.
+
+## License
+
+Dual-licensed, REUSE-compliant:
+
+- **Software**: MIT — see [`LICENSES/MIT.txt`](LICENSES/MIT.txt)
+- **Documentation, guides, hardware docs**: CC-BY-SA-4.0 — see
+  [`LICENSES/CC-BY-SA-4.0.txt`](LICENSES/CC-BY-SA-4.0.txt)
+
+See [`LICENSE`](LICENSE) for the split.
+
+"Cosmergon" is a trademark of RKO Consult UG — see [`NOTICE`](NOTICE)
+for trademark usage guidelines.

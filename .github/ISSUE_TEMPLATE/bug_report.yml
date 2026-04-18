@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in the Pet software is misbehaving
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        For security issues, please use `SECURITY.md` — do **not** open
+        a public issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: Cosmergon Pet version
+      description: "Run `pip show cosmergon-pet` or `cosmergon-pet --version`."
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware
+      options:
+        - Raspberry Pi Zero 2 W
+        - Raspberry Pi 3
+        - Raspberry Pi 4
+        - Raspberry Pi 5
+        - Other (describe below)
+        - "--simulate mode (no hardware)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Raspberry Pi OS
+      description: "Output of `cat /etc/os-release | head -2`."
+      placeholder: "Raspberry Pi OS Lite, Debian 12 (bookworm)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `cosmergon-pet`
+        2. Click the encoder
+        3. Observe that …
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: "`cosmergon-pet --log-level DEBUG` or `journalctl -u cosmergon-pet -n 100`. Redact API keys if present."
+      render: shell

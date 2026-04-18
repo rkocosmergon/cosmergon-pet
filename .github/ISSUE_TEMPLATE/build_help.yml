@@ -1,0 +1,73 @@
+name: Build help — something in the build guide doesn't work
+description: You're following the build guide and hit a wall (wiring, installer, OS)
+title: "[Build] "
+labels: ["build-help"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is for "the build guide says X but it doesn't work for me".
+        If the Pet software itself is misbehaving, use the **Bug report**
+        template instead.
+
+        Check the Troubleshooting section at the end of the build guide
+        first — five common problems are listed there.
+
+  - type: input
+    id: step
+    attributes:
+      label: Which build-guide step are you stuck on?
+      placeholder: "Schritt 3 — Software installieren (pip install …)"
+    validations:
+      required: true
+
+  - type: input
+    id: guide-version
+    attributes:
+      label: Build-guide version
+      description: "The version stamp in the footer of the PDF (e.g. 'v1.4 — April 2026')."
+      placeholder: "v1.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hardware-variant
+    attributes:
+      label: Build variant
+      options:
+        - Variante A — Komplett-Build (new RPi Zero 2 W)
+        - Variante B — Erweiterung (existing RPi)
+        - M5Stack Dial
+        - Other / custom
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What goes wrong?
+      description: Error messages, unexpected output, dark display, broken SSH — whatever you see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: What diagnostics have you run?
+      description: |
+        Helpful to include:
+        - `sudo i2cdetect -y 1`
+        - `gpioinfo | head -40`
+        - `systemctl status cosmergon-pet`
+        - `cat /etc/os-release`
+      render: shell
+
+  - type: checkboxes
+    id: troubleshooting
+    attributes:
+      label: Troubleshooting checklist
+      options:
+        - label: I have read the "Troubleshooting" section of the build guide.
+          required: true
+        - label: I have checked that my wiring matches the pinout tables.
+          required: true

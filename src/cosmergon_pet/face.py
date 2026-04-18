@@ -60,23 +60,23 @@ ENC_DT = 27  # Pin 13
 ENC_SW = 22  # Pin 15
 
 # --- Timing -----------------------------------------------------------------
-DISPLAY_REFRESH_HZ = 10     # Display neu zeichnen (10 FPS reicht für OLED)
-STATE_POLL_SECONDS = 30     # /state-Poll; on_tick liefert zusätzlich alle 60 s
+DISPLAY_REFRESH_HZ = 10  # Display neu zeichnen (10 FPS reicht für OLED)
+STATE_POLL_SECONDS = 30  # /state-Poll; on_tick liefert zusätzlich alle 60 s
 DECISION_POLL_SECONDS = 90  # /decisions seltener — spart API-Calls
-EVENTS_POLL_SECONDS = 45    # /events
-LONGPRESS_SECONDS = 1.0     # Lang-Drück-Schwelle
-DORMANT_AFTER_HOURS = 24    # ( z__z ) wenn keine Entscheidung seit N Stunden
+EVENTS_POLL_SECONDS = 45  # /events
+LONGPRESS_SECONDS = 1.0  # Lang-Drück-Schwelle
+DORMANT_AFTER_HOURS = 24  # ( z__z ) wenn keine Entscheidung seit N Stunden
 ACTION_FLASH_SECONDS = 2.5  # ( >__< ) für N Sekunden nach Aktion
 ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) wenn Encoder dreht
 
 # --- Gesichter --------------------------------------------------------------
 FACES = {
-    "thriving":   "( ^__^ )",
-    "content":    "( -__- )",
+    "thriving": "( ^__^ )",
+    "content": "( -__- )",
     "struggling": "( ;__; )",
-    "dormant":    "( z__z )",
-    "alert":      "( o__o )",
-    "action":     "( >__< )",
+    "dormant": "( z__z )",
+    "alert": "( o__o )",
+    "action": "( >__< )",
 }
 
 COMPASS_PRESETS = ("attack", "defend", "grow", "trade", "explore")
@@ -108,6 +108,7 @@ class PetState:
 # ----------------------------------------------------------------------------
 # Mood-Logik (reine Funktion von Zustand → Gesicht)
 # ----------------------------------------------------------------------------
+
 
 def mood_from_state(ps: PetState, now: float) -> str:
     """Bestimme das Gesicht aus dem aktuellen Zustand.
@@ -149,6 +150,7 @@ def _age_hours(iso_timestamp: str, now: float) -> float | None:
     """Alter in Stunden; None bei unparsbarem Timestamp."""
     try:
         from datetime import datetime, timezone
+
         dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
         return (now - dt.replace(tzinfo=timezone.utc).timestamp()) / 3600.0
     except Exception:
@@ -158,6 +160,7 @@ def _age_hours(iso_timestamp: str, now: float) -> float | None:
 # ----------------------------------------------------------------------------
 # Kontextuelles Aktionsmenü
 # ----------------------------------------------------------------------------
+
 
 def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
     """Menü-Einträge basierend auf Agentensituation.
@@ -203,6 +206,7 @@ def _tier_up_cost(current_tier: int) -> int:
 # Screen-Renderer (liefern Zeilen-Liste; Display-Layer sorgt für Layout)
 # ----------------------------------------------------------------------------
 
+
 def render_screen(ps: PetState, now: float) -> list[str]:
     """Zeichne den aktiven Screen als Text-Zeilen (7 Zeilen à ~21 Zeichen).
 
@@ -236,7 +240,7 @@ def render_screen(ps: PetState, now: float) -> list[str]:
     if ps.paused:
         header = f"PAUSED  {header}"
     if not ps.connection_ok and ps.last_error:
-        body = body + [f"! {ps.last_error[:20]}"]
+        body = [*body, f"! {ps.last_error[:20]}"]
     return [header, "-" * 21, *body]
 
 
@@ -278,9 +282,7 @@ def _render_energy(ps: PetState, now: float) -> list[str]:
         return ["", "No state yet..."]
     rank = state.world_briefing.your_rank if state.world_briefing else 0
     total = state.world_briefing.total_agents if state.world_briefing else 0
-    trend = (
-        state.world_briefing.situation.energy_trend if state.world_briefing else "stable"
-    )
+    trend = state.world_briefing.situation.energy_trend if state.world_briefing else "stable"
     trend_arrow = {"rising": "up", "falling": "down", "stable": "stable"}.get(trend, trend)
     return [
         f"Energy: {int(state.energy)} E",
@@ -335,7 +337,7 @@ def _render_benchmark(ps: PetState, now: float) -> list[str]:
         ]
     return [
         "",
-        f"Days to benchmark:",
+        "Days to benchmark:",
         "",
         f"  {sit.benchmark_days_remaining}",
         "",
@@ -423,6 +425,7 @@ def _wrap(text: str, width: int = 21, max_lines: int = 6) -> list[str]:
 # Display-Backends (OLED via luma.oled + Simulation via stdout)
 # ----------------------------------------------------------------------------
 
+
 class StdoutDisplay:
     """Simulations-Display — Schreibt jeden Frame in die Konsole (für Laptop-Entwicklung)."""
 
@@ -482,6 +485,7 @@ def make_display(simulate: bool) -> Any:
 # ----------------------------------------------------------------------------
 # Input-Backends (KY-040 via RPi.GPIO + Keyboard-Simulation)
 # ----------------------------------------------------------------------------
+
 
 class InputEvent:
     ROT_LEFT = "left"
@@ -590,6 +594,7 @@ class KeyboardEncoder:
 
     def close(self) -> None:
         import termios
+
         self._stop = True
         if self._old_settings is not None:
             try:
@@ -598,9 +603,7 @@ class KeyboardEncoder:
                 pass
 
 
-def make_encoder(
-    simulate: bool, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop
-) -> Any:
+def make_encoder(simulate: bool, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> Any:
     if simulate:
         return KeyboardEncoder(queue, loop)
     try:
@@ -614,9 +617,8 @@ def make_encoder(
 # Eingabe-Behandlung (Navigation + Menü-Execution)
 # ----------------------------------------------------------------------------
 
-async def handle_event(
-    event: str, ps: PetState, agent: CosmergonAgent, now: float
-) -> None:
+
+async def handle_event(event: str, ps: PetState, agent: CosmergonAgent, now: float) -> None:
     if event in (InputEvent.ROT_LEFT, InputEvent.ROT_RIGHT):
         ps.last_rotation_at = now
         _handle_rotate(event, ps)
@@ -650,7 +652,7 @@ async def _handle_click(ps: PetState, agent: CosmergonAgent, now: float) -> None
         return
 
     if ps.compass_submenu:
-        items = list(COMPASS_PRESETS) + ["back"]
+        items = [*list(COMPASS_PRESETS), "back"]
         choice = items[ps.compass_index]
         if choice == "back":
             ps.compass_submenu = False
@@ -689,9 +691,7 @@ async def _handle_longpress(ps: PetState, agent: CosmergonAgent) -> None:
     ps.paused = not ps.paused
 
 
-async def _execute_action(
-    action_key: str, ps: PetState, agent: CosmergonAgent, now: float
-) -> None:
+async def _execute_action(action_key: str, ps: PetState, agent: CosmergonAgent, now: float) -> None:
     """Führe eine Menü-Aktion aus. Fehler werden ignoriert (ActionResult im Journal)."""
     state = ps.game_state
     try:
@@ -700,9 +700,7 @@ async def _execute_action(
             await agent.act("create_field", cube_id=cube_id)
         elif action_key.startswith("place_cells:") and state and state.fields:
             preset = action_key.split(":", 1)[1]
-            empty_field = next(
-                (f for f in state.fields if f.active_cell_count == 0), None
-            )
+            empty_field = next((f for f in state.fields if f.active_cell_count == 0), None)
             if empty_field:
                 await agent.act("place_cells", field_id=empty_field.id, preset=preset)
         elif action_key == "evolve" and state and state.fields:
@@ -723,6 +721,7 @@ async def _execute_action(
 # ----------------------------------------------------------------------------
 # Haupt-Loop (state + display + input)
 # ----------------------------------------------------------------------------
+
 
 async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
     ps = PetState()
@@ -801,9 +800,7 @@ async def _poll_events(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event)
         await asyncio.sleep(EVENTS_POLL_SECONDS)
 
 
-async def _poll_decisions(
-    agent: CosmergonAgent, ps: PetState, stop: asyncio.Event
-) -> None:
+async def _poll_decisions(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event) -> None:
     while not stop.is_set():
         try:
             ps.last_decision = await agent.get_last_decision()
@@ -827,6 +824,7 @@ async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
 # Entry Point
 # ----------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cosmergon Pet — Stufe 1")
     parser.add_argument(
@@ -834,9 +832,7 @@ def main() -> None:
         action="store_true",
         help="Ohne RPi-Hardware: Anzeige in Konsole, Steuerung per Pfeiltasten + Enter/Space.",
     )
-    parser.add_argument(
-        "--log-level", default="WARNING", help="DEBUG/INFO/WARNING/ERROR"
-    )
+    parser.add_argument("--log-level", default="WARNING", help="DEBUG/INFO/WARNING/ERROR")
     args = parser.parse_args()
 
     logging.basicConfig(
