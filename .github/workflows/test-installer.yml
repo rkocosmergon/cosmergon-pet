@@ -45,36 +45,34 @@ jobs:
           base_image: raspios_lite_arm64:latest
           cpu: cortex-a53
           image_additional_mb: 2048
-          copy_artifact_path: tests/last-journal.log
-          copy_artifact_dest: .
           commands: |
-            set -euo pipefail
+            set -euxo pipefail
 
-            # The runner boots as root inside the chroot; create a pi-like
-            # user so the installer exercises the same User=${USER} path an
-            # end user hits.
+            # arm-runner-action boots as root and drops us into the repo as
+            # cwd. Tests must run as a non-root user, otherwise the cwd=/
+            # reproduction trivially succeeds (root can write anywhere),
+            # masking the fix regression check.
             if ! id pi >/dev/null 2>&1; then
-                useradd -m -s /bin/bash -G sudo pi
+                useradd -m -s /bin/bash pi
                 passwd -d pi
-                echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/010-pi-nopasswd
             fi
-            chown -R pi:pi /home/pi
-            cp -r $GITHUB_WORKSPACE /home/pi/cosmergon-pet
+            echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/010-pi-nopasswd
+
+            # Stage the repo inside pi's home so --dev install works from a
+            # pi-owned checkout. (`cp -a` because rsync is not on Pi OS Lite.)
+            mkdir -p /home/pi/cosmergon-pet
+            cp -a . /home/pi/cosmergon-pet/
             chown -R pi:pi /home/pi/cosmergon-pet
 
-            # Run the installer as 'pi' with --no-systemd (chroot has no
-            # running systemd) and --no-i2c (no raspi-config in chroot for
-            # Pi OS Lite's i2c enable).
             su - pi -c '
-                cd /home/pi/cosmergon-pet
+                set -euxo pipefail
+                cd ~/cosmergon-pet
                 bash install/install.sh --no-systemd --no-i2c --dev
             '
 
-            # Re-generate the unit file template into /tmp so the test can
-            # assert on it without needing systemd to be installed.
             su - pi -c '
-                cd /home/pi/cosmergon-pet
+                set -euxo pipefail
+                cd ~/cosmergon-pet
                 source ~/cosmergon-env/bin/activate
-                pip install pytest
                 python3 tests/test_installer_runtime.py
             '
