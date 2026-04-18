@@ -72,4 +72,5 @@ jobs:
                 cd ~/cosmergon-pet
                 source ~/cosmergon-env/bin/activate
                 python3 tests/test_installer_runtime.py
+                python3 tests/test_pet_startup.py
             '

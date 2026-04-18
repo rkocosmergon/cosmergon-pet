@@ -21,7 +21,11 @@ click to execute.
 - **~49 EUR** for a complete build from scratch (Pi Zero 2 W + peripherals)
 - **7 wires, no soldering** — everything plugs into the GPIO header
 - **30 minutes** from blank SD card to a face on the display
-- **No account, no API key** — the agent auto-registers on first start
+- **No account needed for first start** — the agent auto-registers as
+  anonymous (Free tier, rolling 24h session, 1000 energy) on first
+  start. Existing users redeem an activation code with
+  `cosmergon-agent activate COSM-…` before starting the Pet (build
+  guide, Schritt 4)
 - **Headless install** — build guide uses Raspberry Pi Imager + SSH,
   no keyboard/monitor on the Pi
 

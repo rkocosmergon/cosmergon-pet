@@ -724,46 +724,51 @@ async def _execute_action(action_key: str, ps: PetState, agent: CosmergonAgent, 
 
 
 async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
-    ps = PetState()
-    display = make_display(simulate)
-    loop = asyncio.get_running_loop()
-    queue: asyncio.Queue = asyncio.Queue()
-    encoder = make_encoder(simulate, queue, loop)
+    # `async with agent` opens the SDK's HTTP client. Without this, every
+    # `_request()` call raises "Agent not connected. Call run() or use async
+    # with." — which surfaces on the Pet's display as `! state: Agent not co`
+    # on every info screen. Reported on cosmergon-pet#1.
+    async with agent:
+        ps = PetState()
+        display = make_display(simulate)
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        encoder = make_encoder(simulate, queue, loop)
 
-    stop = asyncio.Event()
+        stop = asyncio.Event()
 
-    def _stop_handler(*_: Any) -> None:
-        stop.set()
+        def _stop_handler(*_: Any) -> None:
+            stop.set()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _stop_handler)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _stop_handler)
 
-    # Erste Registrierung / State-Fetch
-    await _prime_state(agent, ps)
+        # Erste Registrierung / State-Fetch
+        await _prime_state(agent, ps)
 
-    # Hintergrund-Tasks: periodische Polls
-    poll_state_task = asyncio.create_task(_poll_state(agent, ps, stop))
-    poll_events_task = asyncio.create_task(_poll_events(agent, ps, stop))
-    poll_decisions_task = asyncio.create_task(_poll_decisions(agent, ps, stop))
-    draw_task = asyncio.create_task(_draw_loop(display, ps, stop))
+        # Hintergrund-Tasks: periodische Polls
+        poll_state_task = asyncio.create_task(_poll_state(agent, ps, stop))
+        poll_events_task = asyncio.create_task(_poll_events(agent, ps, stop))
+        poll_decisions_task = asyncio.create_task(_poll_decisions(agent, ps, stop))
+        draw_task = asyncio.create_task(_draw_loop(display, ps, stop))
 
-    try:
-        while not stop.is_set():
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=0.5)
-            except asyncio.TimeoutError:
-                continue
-            await handle_event(event, ps, agent, time.monotonic())
-    finally:
-        stop.set()
-        for task in (poll_state_task, poll_events_task, poll_decisions_task, draw_task):
-            task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
-        encoder.close()
-        display.close()
+        try:
+            while not stop.is_set():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                await handle_event(event, ps, agent, time.monotonic())
+        finally:
+            stop.set()
+            for task in (poll_state_task, poll_events_task, poll_decisions_task, draw_task):
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            encoder.close()
+            display.close()
 
 
 async def _prime_state(agent: CosmergonAgent, ps: PetState) -> None:

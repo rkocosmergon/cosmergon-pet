@@ -398,23 +398,167 @@ def build() -> None:
         )
     )
 
-    # ===== STEP 4: Start =====
-    story.append(Paragraph("Schritt 4 \u2014 Agent starten", S_H1))
+    # ===== STEP 4: Agent-Zuordnung =====
+    story.append(Paragraph("Schritt 4 \u2014 Agent-Zuordnung auf cosmergon.com", S_H1))
     story.append(hr())
-    story.append(code("source ~/cosmergon-env/bin/activate<br/>cosmergon-pet"))
     story.append(
         Paragraph(
-            "Beim ersten Start registriert sich der Agent automatisch bei "
-            "cosmergon.com. Kein Account, kein API-Key n\u00f6tig. "
-            "Der Key wird lokal gespeichert und verl\u00e4ngert sich automatisch "
-            "bei jeder API-Abfrage (Rolling 24h Expiry). Solange der RPi "
-            "l\u00e4uft, lebt dein Agent.",
+            "<b>Kurz zur Begrifflichkeit:</b> <i>Agent</i> lebt auf "
+            "cosmergon.com \u2014 ein virtueller Spieler, der 24/7 im "
+            "Spielfeld handelt. <i>Pet</i> ist das Ger\u00e4t auf deinem "
+            "Schreibtisch, das den Zustand seines Agenten auf dem OLED "
+            "anzeigt. Der Pet braucht also einen Agenten, dessen Zustand "
+            "er abfragt.",
+            S_BODY,
+        )
+    )
+
+    story.append(Paragraph("<b>Standard-Weg: Frischen Agenten anlegen lassen</b>", S_BODY))
+    story.append(
+        Paragraph(
+            "Wenn du Cosmergon zum ersten Mal benutzt, tust du an dieser "
+            "Stelle <b>nichts</b>. Der Pet registriert sich beim ersten "
+            "Start automatisch als anonymer Agent (Free-Tier, 1000 Energie "
+            "Startbudget, rollierende 24h-Session \u2014 jede API-Abfrage "
+            "verl\u00e4ngert sie). Der generierte API-Key wird lokal unter "
+            "<code>~/.cosmergon/config.toml</code> abgelegt; der Pet findet "
+            "ihn beim n\u00e4chsten Start automatisch wieder. Geh direkt zu "
+            "<b>Pet starten</b> weiter unten.",
+            S_BODY,
+        )
+    )
+
+    story.append(
+        Paragraph("<b>Du hast schon einen Cosmergon-Agenten?</b>", S_BODY)
+    )
+    story.append(
+        Paragraph(
+            "Etwa vom Dashboard oder dem SDK auf deinem Laptop, und willst "
+            "<i>diesen</i> Agenten auf dem Pet sehen statt einen neuen "
+            "anzulegen. Zwei Varianten, je nachdem wie du an den Key "
+            "kommst. Die SDK-Credential-Reihenfolge ist "
+            "<code>COSMERGON_API_KEY</code>\u00a0env\u00a0&gt;\u00a0"
+            "<code>~/.cosmergon/config.toml</code>\u00a0&gt;\u00a0"
+            "Auto-Register \u2014 was zuerst gefunden wird, gewinnt.",
             S_BODY,
         )
     )
     story.append(
         Paragraph(
-            "<b>Du solltest jetzt ein Gesicht auf dem Display sehen.</b>",
+            "<b>Variante 1: Activation Code einl\u00f6sen "
+            "(empfohlen \u2014 persistent)</b>",
+            S_BODY,
+        )
+    )
+    story.append(
+        Paragraph(
+            "Wenn du gerade einen Solo- oder Developer-Plan auf "
+            "cosmergon.com gekauft hast (<i>Solo / Developer = "
+            "kostenpflichtige Stufen</i>), bekamst du per E-Mail einen "
+            "Code wie <code>COSM-A1B2C3D4</code> (8 Zeichen nach dem "
+            "Bindestrich, 1\u00a0Stunde g\u00fcltig). L\u00f6se ihn auf "
+            "dem Pi ein:",
+            S_BODY,
+        )
+    )
+    story.append(
+        code(
+            "source ~/cosmergon-env/bin/activate<br/>"
+            "cosmergon-agent activate COSM-A1B2C3D4"
+        )
+    )
+    story.append(
+        Paragraph(
+            "Der Key wird in <code>~/.cosmergon/config.toml</code> "
+            "gespeichert, der Pet findet ihn automatisch, und er "
+            "\u00fcberlebt Reboots.",
+            S_BODY,
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "<b>Variante 2: API-Key aus einem bestehenden Setup kopieren "
+            "(nur wenn kein Activation Code mehr da ist)</b>",
+            S_BODY,
+        )
+    )
+    story.append(
+        Paragraph(
+            "Wenn du den Key schon auf einem anderen Rechner (Laptop, "
+            "Desktop) in Betrieb hast, liest du ihn dort aus:",
+            S_BODY,
+        )
+    )
+    story.append(code("grep api_key ~/.cosmergon/config.toml"))
+    story.append(
+        Paragraph(
+            "Das gibt dir eine Zeile wie <code>api_key = "
+            "\"AGENT-A1B2:...\"</code>. Auf dem Pi kannst du ihn jetzt "
+            "einmalig testen \u2014 aber <b>Achtung:</b> <code>export</code> "
+            "verliert sich beim Logout/Reboot und der systemd-Service "
+            "kennt die Variable nicht:",
+            S_BODY,
+        )
+    )
+    story.append(
+        code(
+            "export COSMERGON_API_KEY='AGENT-A1B2:secret-hier'<br/>"
+            "source ~/cosmergon-env/bin/activate<br/>"
+            "cosmergon-pet   # nur fuer den Einmal-Test"
+        )
+    )
+    story.append(
+        Paragraph(
+            "F\u00fcr persistente Nutzung musst du den Key in die systemd-"
+            "Service-Datei eintragen (Details in Schritt 5):",
+            S_BODY,
+        )
+    )
+    story.append(
+        code("sudo systemctl edit cosmergon-pet<br/># Eintragen:<br/>"
+             "[Service]<br/>"
+             "Environment=\"COSMERGON_API_KEY=AGENT-A1B2:secret-hier\"")
+    )
+    story.append(
+        Paragraph(
+            "Oder du kopierst die <code>~/.cosmergon/config.toml</code> "
+            "komplett vom Laptop auf den Pi \u2014 dann entf\u00e4llt die "
+            "systemd-Bastelei und Variante 1 waere der sauberere Weg "
+            "gewesen.",
+            S_BODY,
+        )
+    )
+
+    story.append(Paragraph("<b>Pet starten</b>", S_BODY))
+    story.append(code("source ~/cosmergon-env/bin/activate<br/>cosmergon-pet"))
+    story.append(
+        Paragraph(
+            "<b>Du solltest jetzt ein Gesicht auf dem Display sehen.</b> "
+            "Unten im Display steht der Agent-Name und die Energie \u2014 "
+            "Standard-Weg ergibt einen frisch angelegten Agenten mit "
+            "generiertem Namen, eine Verbindung zum bestehenden Agenten "
+            "zeigt den dir bekannten Namen.",
+            S_BODY,
+        )
+    )
+    story.append(
+        Paragraph(
+            "<b>Fehler \u201c! state: Agent not co\u201d auf dem Display?</b> "
+            "Der Pet-Service kann sich nicht mit cosmergon.com verbinden. "
+            "Pr\u00fcfe zuerst das Log:",
+            S_BODY,
+        )
+    )
+    story.append(code("sudo journalctl -u cosmergon-pet -n 50 --no-pager"))
+    story.append(
+        Paragraph(
+            "Typische Ursachen: kein Internet auf dem Pi "
+            "(<code>ping cosmergon.com</code>), veraltete SDK-Version "
+            "(<code>pip install --upgrade cosmergon-agent</code>), oder "
+            "ein abgelaufener API-Key bei Variante 2 "
+            "(<code>cosmergon-agent activate</code> mit einem neuen Code "
+            "nachholen).",
             S_BODY,
         )
     )

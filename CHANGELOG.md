@@ -6,6 +6,48 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-04-18
+
+### Fixed
+
+- **Pet service** now opens the SDK HTTP client via `async with agent:`
+  in `run_pet()`. Without it every `_request()` call raised
+  `RuntimeError("Agent not connected. Call run() or use async with.")`
+  from the SDK, which the Pet caught in `_poll_state` and surfaced on
+  the display as `! state: Agent not co` on every info screen. The
+  encoder and the display both worked; the Pet simply never reached
+  the backend. Reported as part of
+  [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1).
+
+### Added
+
+- **`tests/test_pet_startup.py`** — startup-level tests that catch this
+  class of bug: a static lint on `run_pet()` requiring
+  `async with agent:`, plus two canary tests that verify the SDK's
+  `_client is None`-before-open invariant still holds and that the
+  pre-flight RuntimeError fires on an unopened agent. Exercises the
+  exact path `_prime_state()` hit on Lashee's Pi.
+- **Build guide Schritt 4 — "Mit Cosmergon verbinden"** now documents
+  both onboarding paths:
+  - **A** (frischer Pet, kein Account): auto-register runs on first
+    start, nothing to do.
+  - **B** (bestehenden Agent umziehen): either copy the existing
+    `AGENT-...:secret` key from another setup's
+    `~/.cosmergon/config.toml` into `COSMERGON_API_KEY`, or redeem a
+    fresh Stripe-checkout activation code with
+    `cosmergon-agent activate COSM-XXXXXXXX`.
+- **`src/cosmergon_pet/__main__.py`** — allows
+  `python -m cosmergon_pet` alongside the `cosmergon-pet` entry
+  point, which the new startup tests rely on.
+
+### Process
+
+- CI workflow (`test-installer.yml`) now runs both the installer
+  runtime tests and the pet startup tests inside the Pi OS Lite
+  aarch64 chroot, closing the verification gap that let this third
+  layer of [#1](https://github.com/rkocosmergon/cosmergon-pet/issues/1)
+  escape the v0.1.3 release.
+
 ## [0.1.3] — 2026-04-18
 
 ### Fixed
