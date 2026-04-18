@@ -108,9 +108,11 @@ fi
 # -----------------------------------------------------------------------------
 # 3. apt packages
 # -----------------------------------------------------------------------------
-log "Installing apt packages (python3-pip, python3-venv, python3-dev)"
+log "Installing apt packages (python3-pip, python3-venv, python3-dev, git)"
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3-pip python3-venv python3-dev
+# `git` is required because we pip-install from a git+https:// URL and pip
+# shells out to the git binary. Raspberry Pi OS Lite does not ship with it.
+sudo apt-get install -y -qq python3-pip python3-venv python3-dev git
 
 # -----------------------------------------------------------------------------
 # 3b. GPIO / I2C group membership
