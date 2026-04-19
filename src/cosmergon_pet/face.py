@@ -1,40 +1,44 @@
-"""Cosmergon Pet — Stufe 1: Pet-Modus.
+"""Cosmergon Pet — Stage 1: Pet mode.
 
-Dein KI-Agent lebt auf einem 128x64-OLED: Gesicht + 8 Info-Screens,
-Steuerung über einen KY-040 Dreh-Drück-Knopf.
+Your AI agent lives on a 128x64 OLED: a face plus eight info screens,
+controlled by a single KY-040 rotary push knob.
 
-Bauanleitung: guide/cosmergon-pet-bauanleitung.pdf (cosmergon-pet-Repo)
-Repo:         github.com/rkocosmergon/cosmergon-pet
+Build guide: guide/cosmergon-pet-bauanleitung.pdf (this repo)
+Repo:        github.com/rkocosmergon/cosmergon-pet
 
-Hardware (40-Pin-RPi: Zero 2 W, 3, 4, 5):
+Hardware (40-pin RPi: Zero 2 W, 3, 4, 5):
     OLED 1.3" SH1106 I2C   -> VCC=Pin1, GND=Pin6, SDA=Pin3, SCL=Pin5
-    KY-040 Rotary Encoder  -> CLK=Pin11, DT=Pin13, SW=Pin15, VCC=Pin17, GND=Pin9
+    KY-040 rotary encoder  -> CLK=Pin11, DT=Pin13, SW=Pin15, VCC=Pin17, GND=Pin9
 
-Software:
-    sudo raspi-config nonint do_i2c 0  # I2C aktivieren + Reboot
+Install (one-line):
+    curl -sL https://raw.githubusercontent.com/rkocosmergon/cosmergon-pet/main/install/install.sh \
+      | bash
+
+Or manually:
+    sudo raspi-config nonint do_i2c 0   # enable I2C, then reboot
     python3 -m venv ~/cosmergon-env && source ~/cosmergon-env/bin/activate
-    pip install cosmergon-agent luma.oled RPi.GPIO pillow
-    python3 cosmergon_face.py
+    pip install git+https://github.com/rkocosmergon/cosmergon-pet
+    cosmergon-pet
 
-Simulation (ohne RPi-Hardware):
-    python3 cosmergon_face.py --simulate
+Simulation (no RPi hardware required):
+    cosmergon-pet --simulate
 
-Die 8 Info-Screens (Drehen scrollt, Klick auf Screen 1 öffnet Aktionsmenü):
-    1 Gesicht + Mood         /health
-    2 Energie + Rank         /state
-    3 Territorium            /state
-    4 Events                 /events
-    5 Benchmark              /state
-    6 Journal                /decisions
-    7 Letzte Aktion          /decisions
-    8 Regeln                 /state
+Eight info screens (rotate to scroll; click on screen 1 opens the action menu):
+    1 face + mood            /health
+    2 energy + rank          /state
+    3 territory              /state
+    4 events                 /events
+    5 benchmark              /state
+    6 journal                /decisions
+    7 last action            /decisions
+    8 rules                  /state
 
-Bedienung:
-    Drehen            Durch Screens / Menü-Einträge scrollen
-    Kurz drücken      Auf Screen 1: Aktionsmenü öffnen
-                      Im Menü: ausgewählte Aktion ausführen
-                      Sonst: Screen 1 aufrufen
-    Lang drücken >1s  Agent pausieren/fortsetzen (oder zurück aus Menü)
+Controls:
+    Rotate            Scroll through screens / menu entries
+    Short press       On screen 1: open action menu
+                      In menu: execute selected action
+                      Otherwise: jump back to screen 1
+    Long press >1s    Pause/resume agent (or leave the menu)
 """
 
 from __future__ import annotations
@@ -54,22 +58,22 @@ from cosmergon_agent.state import GameState
 
 logger = logging.getLogger("cosmergon-pet")
 
-# --- GPIO-Pins (BCM-Nummerierung) -------------------------------------------
+# --- GPIO pins (BCM numbering) ----------------------------------------------
 ENC_CLK = 17  # Pin 11
 ENC_DT = 27  # Pin 13
 ENC_SW = 22  # Pin 15
 
 # --- Timing -----------------------------------------------------------------
-DISPLAY_REFRESH_HZ = 10  # Display neu zeichnen (10 FPS reicht für OLED)
-STATE_POLL_SECONDS = 30  # /state-Poll; on_tick liefert zusätzlich alle 60 s
-DECISION_POLL_SECONDS = 90  # /decisions seltener — spart API-Calls
+DISPLAY_REFRESH_HZ = 10  # redraw the display (10 FPS is plenty for OLED)
+STATE_POLL_SECONDS = 30  # /state poll; on_tick also fires every ~60 s
+DECISION_POLL_SECONDS = 90  # /decisions less often — saves API calls
 EVENTS_POLL_SECONDS = 45  # /events
-LONGPRESS_SECONDS = 1.0  # Lang-Drück-Schwelle
-DORMANT_AFTER_HOURS = 24  # ( z__z ) wenn keine Entscheidung seit N Stunden
-ACTION_FLASH_SECONDS = 2.5  # ( >__< ) für N Sekunden nach Aktion
-ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) wenn Encoder dreht
+LONGPRESS_SECONDS = 1.0  # long-press threshold
+DORMANT_AFTER_HOURS = 24  # ( z__z ) if no decision in N hours
+ACTION_FLASH_SECONDS = 2.5  # ( >__< ) for N seconds after an action
+ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) when the encoder is being turned
 
-# --- Gesichter --------------------------------------------------------------
+# --- Faces ------------------------------------------------------------------
 FACES = {
     "thriving": "( ^__^ )",
     "content": "( -__- )",
@@ -84,7 +88,7 @@ COMPASS_PRESETS = ("attack", "defend", "grow", "trade", "explore")
 
 @dataclass
 class PetState:
-    """Alles, was UI + Input-Thread brauchen. Zentrale Shared State."""
+    """Everything UI + input thread need to share. The single source of truth."""
 
     current_screen: int = 0  # 0..7
     menu_open: bool = False
@@ -97,7 +101,7 @@ class PetState:
     last_action_at: float = 0.0
     last_action_label: str = ""
 
-    # Vom Poller gesetzt
+    # populated by the poller
     game_state: GameState | None = None
     events: list[dict] = field(default_factory=list)
     last_decision: dict | None = None
@@ -106,15 +110,15 @@ class PetState:
 
 
 # ----------------------------------------------------------------------------
-# Mood-Logik (reine Funktion von Zustand → Gesicht)
+# Mood logic (pure function: state → face)
 # ----------------------------------------------------------------------------
 
 
 def mood_from_state(ps: PetState, now: float) -> str:
-    """Bestimme das Gesicht aus dem aktuellen Zustand.
+    """Pick the face from the current state.
 
-    Reihenfolge priorisiert visuelle Rückmeldung: laufende Aktion > Encoder-
-    Drehung > Schlaf > Notlage > Normalzustand.
+    Order prioritises visual feedback: ongoing action > encoder rotation >
+    sleep > distress > normal.
     """
     if now - ps.last_action_at < ACTION_FLASH_SECONDS:
         return "action"
@@ -123,9 +127,9 @@ def mood_from_state(ps: PetState, now: float) -> str:
 
     state = ps.game_state
     if state is None:
-        return "content"  # Noch kein State — neutrale Anzeige
+        return "content"  # no state yet — show a neutral face
 
-    # Dormant: keine Entscheidung seit DORMANT_AFTER_HOURS
+    # Dormant: no decision in the last DORMANT_AFTER_HOURS
     decision = ps.last_decision
     if decision and decision.get("created_at"):
         age_hours = _age_hours(decision["created_at"], now)
@@ -147,7 +151,7 @@ def mood_from_state(ps: PetState, now: float) -> str:
 
 
 def _age_hours(iso_timestamp: str, now: float) -> float | None:
-    """Alter in Stunden; None bei unparsbarem Timestamp."""
+    """Age in hours; returns None if the timestamp can't be parsed."""
     try:
         from datetime import datetime, timezone
 
@@ -158,15 +162,15 @@ def _age_hours(iso_timestamp: str, now: float) -> float | None:
 
 
 # ----------------------------------------------------------------------------
-# Kontextuelles Aktionsmenü
+# Contextual action menu
 # ----------------------------------------------------------------------------
 
 
 def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
-    """Menü-Einträge basierend auf Agentensituation.
+    """Menu entries derived from the agent's current situation.
 
-    Liefert Liste (label, action_key). action_key wird von execute_menu_action
-    interpretiert (API-Aktion oder Pseudo-Aktion wie "compass"/"pause").
+    Returns a list of (label, action_key). The action_key is interpreted by
+    execute_menu_action (an API call or a pseudo-action like "compass"/"pause").
     """
     items: list[tuple[str, str]] = []
 
@@ -183,7 +187,7 @@ def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
         if situation.fields_owned == 0:
             items.append(("Create Field (100 E)", "create_field"))
         if situation.fields_without_cells > 0 and situation.affordable_presets:
-            # Günstigstes Preset ist bei affordable_presets meistens zuerst
+            # affordable_presets is typically sorted cheapest-first
             preset = situation.affordable_presets[0]
             items.append((f"Place Cells ({preset})", f"place_cells:{preset}"))
         if energy >= _tier_up_cost(tier):
@@ -198,19 +202,19 @@ def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
 
 
 def _tier_up_cost(current_tier: int) -> int:
-    """Grobe Daumenregel für Evolve-Kosten (500 E bei T1, verdoppelt pro Tier)."""
+    """Rough rule of thumb for evolve cost (500 E at T1, doubles per tier)."""
     return 500 * (2 ** max(0, current_tier - 1))
 
 
 # ----------------------------------------------------------------------------
-# Screen-Renderer (liefern Zeilen-Liste; Display-Layer sorgt für Layout)
+# Screen renderers (return a list of lines; the display layer handles layout)
 # ----------------------------------------------------------------------------
 
 
 def render_screen(ps: PetState, now: float) -> list[str]:
-    """Zeichne den aktiven Screen als Text-Zeilen (7 Zeilen à ~21 Zeichen).
+    """Render the active screen as text lines (7 lines, ~21 chars each).
 
-    Wenn Menü offen ist, wird statt Screen 1 das Menü dargestellt.
+    If the menu is open, the menu is drawn in place of screen 1.
     """
     if ps.menu_open and ps.current_screen == 0:
         return _render_menu(ps)
@@ -262,7 +266,7 @@ def _render_face(ps: PetState, now: float) -> list[str]:
 
 
 def _headline_for(state: GameState) -> str:
-    """Eine knackige Zeile aus dem WorldBriefing für den Face-Screen."""
+    """A snappy one-liner from the WorldBriefing for the face screen."""
     wb = state.world_briefing
     if not wb:
         return ""
@@ -379,7 +383,7 @@ def _render_rules(ps: PetState, now: float) -> list[str]:
 
 
 def _render_menu(ps: PetState) -> list[str]:
-    """Aktionsmenü über Face-Screen gelegt."""
+    """Action menu drawn on top of the face screen."""
     if ps.compass_submenu:
         header = "COMPASS"
         items = [(p, p) for p in COMPASS_PRESETS] + [("back", "back")]
@@ -390,7 +394,7 @@ def _render_menu(ps: PetState) -> list[str]:
         idx = ps.menu_index
 
     lines = [header, "-" * 21]
-    # Fenster um aktuellen Index (max 5 Einträge sichtbar)
+    # Window around the current index (max 5 entries visible)
     start = max(0, min(idx - 2, len(items) - 5))
     end = min(len(items), start + 5)
     for i in range(start, end):
@@ -401,7 +405,7 @@ def _render_menu(ps: PetState) -> list[str]:
 
 
 def _wrap(text: str, width: int = 21, max_lines: int = 6) -> list[str]:
-    """Einfacher Greedy-Wrap auf Wortgrenzen."""
+    """Simple greedy word-boundary wrapping."""
     if not text:
         return [""]
     words = text.split()
@@ -422,12 +426,12 @@ def _wrap(text: str, width: int = 21, max_lines: int = 6) -> list[str]:
 
 
 # ----------------------------------------------------------------------------
-# Display-Backends (OLED via luma.oled + Simulation via stdout)
+# Display backends (OLED via luma.oled + simulation via stdout)
 # ----------------------------------------------------------------------------
 
 
 class StdoutDisplay:
-    """Simulations-Display — Schreibt jeden Frame in die Konsole (für Laptop-Entwicklung)."""
+    """Simulation display — writes each frame to the console (laptop dev)."""
 
     def __init__(self) -> None:
         self._last_frame: str = ""
@@ -449,7 +453,7 @@ class StdoutDisplay:
 
 
 class OledDisplay:
-    """Hardware-Display — SH1106 128x64 via I2C (luma.oled)."""
+    """Hardware display — SH1106 128x64 over I2C (luma.oled)."""
 
     def __init__(self) -> None:
         from luma.core.interface.serial import i2c
@@ -458,7 +462,7 @@ class OledDisplay:
 
         self._serial = i2c(port=1, address=0x3C)
         self._device = sh1106(self._serial, rotate=0)
-        # Default-Font (8px) passt 21 Zeichen × 8 Zeilen auf 128×64.
+        # Default font (8 px) fits 21 chars × 8 lines on a 128×64 panel.
         self._font = ImageFont.load_default()
 
     def draw(self, lines: list[str]) -> None:
@@ -478,7 +482,7 @@ def make_display(simulate: bool) -> Any:
     try:
         return OledDisplay()
     except Exception as err:
-        logger.warning("OLED nicht verfügbar (%s) — wechsle auf Simulation.", err)
+        logger.warning("OLED unavailable (%s) — falling back to simulation.", err)
         return StdoutDisplay()
 
 
@@ -495,7 +499,7 @@ class InputEvent:
 
 
 class GpioEncoder:
-    """KY-040 an CLK/DT/SW — Events landen in asyncio.Queue (thread-safe)."""
+    """KY-040 on CLK/DT/SW — events land in an asyncio.Queue (thread-safe)."""
 
     def __init__(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> None:
         import RPi.GPIO as GPIO  # type: ignore[import-not-found]
@@ -515,7 +519,7 @@ class GpioEncoder:
         GPIO.add_event_detect(ENC_SW, GPIO.BOTH, callback=self._on_switch, bouncetime=20)
 
     def _push(self, event: str) -> None:
-        """Thread-sicher ein Event in die asyncio-Queue schieben."""
+        """Thread-safely push an event onto the asyncio queue."""
         self._loop.call_soon_threadsafe(self._queue.put_nowait, event)
 
     def _on_rotate(self, _channel: int) -> None:
@@ -540,7 +544,7 @@ class GpioEncoder:
             self._press_start = None
             if duration >= LONGPRESS_SECONDS:
                 self._push(InputEvent.LONGPRESS)
-            elif duration >= 0.03:  # Entprell-Minimum
+            elif duration >= 0.03:  # debounce minimum
                 self._push(InputEvent.CLICK)
 
     def close(self) -> None:
@@ -551,9 +555,9 @@ class GpioEncoder:
 
 
 class KeyboardEncoder:
-    """Simulations-Input für Laptop: Pfeiltasten + Enter.
+    """Simulation input for laptop dev: arrow keys + Enter.
 
-    Nutzt stdin im raw-Modus — nur auf Unix-Terminals.
+    Uses stdin in raw mode — Unix terminals only.
     """
 
     def __init__(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> None:
@@ -570,9 +574,9 @@ class KeyboardEncoder:
             tty.setcbreak(self._fd)
             self._task = loop.create_task(self._reader())
         except (termios.error, OSError):
-            # Kein TTY (z. B. Unit-Test, Pipe) — Reader überspringen,
-            # Display läuft trotzdem, nur ohne Input.
-            logger.info("KeyboardEncoder: stdin kein TTY, Input deaktiviert.")
+            # No TTY (e.g. unit test, pipe) — skip the reader; the display
+            # still runs, just without input.
+            logger.info("KeyboardEncoder: stdin is not a TTY, input disabled.")
             self._task = None
 
     async def _reader(self) -> None:
@@ -609,12 +613,12 @@ def make_encoder(simulate: bool, queue: asyncio.Queue, loop: asyncio.AbstractEve
     try:
         return GpioEncoder(queue, loop)
     except Exception as err:
-        logger.warning("GPIO nicht verfügbar (%s) — wechsle auf Keyboard.", err)
+        logger.warning("GPIO unavailable (%s) — falling back to keyboard.", err)
         return KeyboardEncoder(queue, loop)
 
 
 # ----------------------------------------------------------------------------
-# Eingabe-Behandlung (Navigation + Menü-Execution)
+# Input handling (navigation + menu execution)
 # ----------------------------------------------------------------------------
 
 
@@ -632,7 +636,7 @@ def _handle_rotate(event: str, ps: PetState) -> None:
     direction = 1 if event == InputEvent.ROT_RIGHT else -1
     if ps.menu_open:
         if ps.compass_submenu:
-            n = len(COMPASS_PRESETS) + 1  # +1 für "back"
+            n = len(COMPASS_PRESETS) + 1  # +1 for "back"
             ps.compass_index = (ps.compass_index + direction) % n
         else:
             items = build_menu(ps.game_state, ps.paused)
@@ -647,7 +651,7 @@ async def _handle_click(ps: PetState, agent: CosmergonAgent, now: float) -> None
             ps.menu_open = True
             ps.menu_index = 0
         else:
-            # Kurzer Klick auf anderen Screens springt zurück zu Screen 1
+            # Short click on other screens jumps back to screen 1
             ps.current_screen = 0
         return
 
@@ -682,7 +686,7 @@ async def _handle_click(ps: PetState, agent: CosmergonAgent, now: float) -> None
 
 async def _handle_longpress(ps: PetState, agent: CosmergonAgent) -> None:
     if ps.menu_open:
-        # Aus Menü zurück
+        # Back out of the menu
         if ps.compass_submenu:
             ps.compass_submenu = False
         else:
@@ -692,7 +696,7 @@ async def _handle_longpress(ps: PetState, agent: CosmergonAgent) -> None:
 
 
 async def _execute_action(action_key: str, ps: PetState, agent: CosmergonAgent, now: float) -> None:
-    """Führe eine Menü-Aktion aus. Fehler werden ignoriert (ActionResult im Journal)."""
+    """Execute a menu action. Errors are silently swallowed (ActionResult in the journal)."""
     state = ps.game_state
     try:
         if action_key == "create_field" and state and state.universe_cubes:
@@ -719,7 +723,7 @@ async def _execute_action(action_key: str, ps: PetState, agent: CosmergonAgent, 
 
 
 # ----------------------------------------------------------------------------
-# Haupt-Loop (state + display + input)
+# Main loop (state + display + input)
 # ----------------------------------------------------------------------------
 
 
@@ -743,10 +747,10 @@ async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, _stop_handler)
 
-        # Erste Registrierung / State-Fetch
+        # Initial registration / state fetch
         await _prime_state(agent, ps)
 
-        # Hintergrund-Tasks: periodische Polls
+        # Background tasks: periodic polls
         poll_state_task = asyncio.create_task(_poll_state(agent, ps, stop))
         poll_events_task = asyncio.create_task(_poll_events(agent, ps, stop))
         poll_decisions_task = asyncio.create_task(_poll_decisions(agent, ps, stop))
@@ -772,7 +776,7 @@ async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
 
 
 async def _prime_state(agent: CosmergonAgent, ps: PetState) -> None:
-    """Initialer State + Registrierung. SDK macht Auto-Register on first call."""
+    """Initial state + registration. The SDK auto-registers on the first call."""
     try:
         await agent._resolve_agent_id()  # type: ignore[attr-defined]
         ps.connection_ok = True
@@ -831,11 +835,11 @@ async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Cosmergon Pet — Stufe 1")
+    parser = argparse.ArgumentParser(description="Cosmergon Pet — stage 1")
     parser.add_argument(
         "--simulate",
         action="store_true",
-        help="Ohne RPi-Hardware: Anzeige in Konsole, Steuerung per Pfeiltasten + Enter/Space.",
+        help="Run without RPi hardware: console display, arrow keys + Enter/Space.",
     )
     parser.add_argument("--log-level", default="WARNING", help="DEBUG/INFO/WARNING/ERROR")
     args = parser.parse_args()
