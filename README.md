@@ -22,10 +22,9 @@ click to execute.
 - **7 wires, no soldering** — everything plugs into the GPIO header
 - **30 minutes** from blank SD card to a face on the display
 - **No account needed for first start** — the agent auto-registers as
-  anonymous (Free tier, rolling 24h session, 1000 energy) on first
-  start. Existing users redeem an activation code with
-  `cosmergon-agent activate COSM-…` before starting the Pet (build
-  guide, Schritt 4)
+  anonymous (Free tier, rolling 24h session, 1000 energy). Existing
+  users see [`docs/onboarding.md`](docs/onboarding.md) for two ways
+  to attach an existing agent.
 - **Headless install** — build guide uses Raspberry Pi Imager + SSH,
   no keyboard/monitor on the Pi
 
@@ -66,10 +65,10 @@ Output goes to the terminal, keyboard controls replace the rotary knob.
 
 ```
 src/cosmergon_pet/      The Pet software (Python)
-install/                requirements + (later) install.sh, systemd
+install/                Installer script + systemd unit
 hardware/               Wiring tables, BOMs (markdown)
 guide/                  Build guide (PDF)
-docs/                   Getting started, troubleshooting, FAQ
+docs/                   Onboarding + troubleshooting + testing notes
 scripts/                Build-guide generator, repo tooling
 .github/                Issue templates, PR template, CI workflows
 ```
@@ -83,6 +82,10 @@ scripts/                Build-guide generator, repo tooling
   (`pip install cosmergon-agent`)
 - **Build guide PDF**:
   [`guide/cosmergon-pet-bauanleitung.pdf`](guide/cosmergon-pet-bauanleitung.pdf)
+- **Onboarding** (attach an existing agent):
+  [`docs/onboarding.md`](docs/onboarding.md)
+- **Troubleshooting** (symptom-first):
+  [`docs/troubleshooting.md`](docs/troubleshooting.md)
 
 ## Contributing
 

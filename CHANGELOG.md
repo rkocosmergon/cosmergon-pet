@@ -6,6 +6,30 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Build guide is now in English** and trimmed to three pages
+  (~700 words, down from nine pages / ~1800 words). The 5-stage
+  roadmap, the 8-screen catalogue and the duplicated wiring prose
+  have been moved out of the printable guide. Body text is now
+  left-aligned (no justify; rivers in tight columns hurt readability
+  more than ragged-right does). The guide footer references v1.5.
+- **Shop-link convention switched to globally available maker shops**
+  (Pimoroni, The Pi Hut, Adafruit, AliExpress) in the README and BOM
+  files. DACH-specific direct links (Amazon.de, Voelkner) remain as
+  regional alternatives but are no longer the primary references.
+
+### Added
+
+- **`docs/onboarding.md`** — covers the two ways to attach a Cosmergon
+  agent to a fresh Pet (auto-register vs. existing agent via
+  activation code or `scp`). Linked from build-guide step 4.
+- **`docs/troubleshooting.md`** — symptom-first FAQ. Opens with the
+  four "quick fixes" that also appear as the mini-block at the end
+  of the build guide, then catalogues specific failures from issue
+  history (lgpio FIFO, swig build, GPIO group, async-with). Linked
+  from the mini-block.
+
 ## [0.1.4] — 2026-04-18
 
 ### Fixed
