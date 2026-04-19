@@ -1,3 +1,4 @@
-cosmergon-agent>=0.4.1
+cosmergon-agent>=0.7.0
 luma.oled>=3.13.0
 rpi-lgpio>=0.6
+pillow>=10.0.0

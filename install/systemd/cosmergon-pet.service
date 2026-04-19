@@ -4,8 +4,16 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Replace 'pi' with your username if different.
+# Replace 'pi' with your username if different (and adjust the paths below).
 User=pi
+# WorkingDirectory + Environment=HOME are both required: lgpio creates its
+# notification FIFOs (.lgd-nfy*) via getcwd(), which falls back to / under
+# systemd defaults — non-root cannot write there and the encoder silently
+# falls back to keyboard input. See cosmergon-pet#1 (v0.1.3 fix).
+# install/install.sh writes this dynamically with $HOME expanded; if you
+# install the unit by hand, replace /home/pi with your actual $HOME.
+WorkingDirectory=/home/pi
+Environment=HOME=/home/pi
 ExecStart=/home/pi/cosmergon-env/bin/cosmergon-pet
 Restart=always
 RestartSec=10
