@@ -12,33 +12,37 @@ OLED, encoder and cables.
 | Female-to-Female Dupont cables | 7 | ~3 | Usually sold in packs of 40 or 120. |
 | **Total** | | **~14** | |
 
-## Suggested shops
+These are commodity maker parts — any reputable electronics shop carries
+them. Exact SKUs vary; the wiring table in [`wiring.md`](wiring.md)
+works with any SH1106 I²C display and any quadrature encoder with
+push-switch.
 
-### Amazon.de (single-parcel, often next-day)
+## Global maker shops (ship worldwide)
 
-| Part | Link |
-|---|---|
-| 1.3" OLED SH1106 I²C | [AZ-Delivery 1.3" OLED](https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45) |
-| KY-040 Encoder (3-pack) | [AZ-Delivery KY-040](https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J) |
-| Dupont F-F cables (40 pcs) | [AZ-Delivery Jumper Wire F-F](https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8) |
+| Shop | Region | What they stock for this build |
+|---|---|---|
+| [Pimoroni](https://shop.pimoroni.com/) | UK / EU shipping | Own SH1106 breakouts, rotary encoders, Dupont jumpers |
+| [The Pi Hut](https://thepihut.com/) | UK / worldwide | Large Pi-focused catalogue incl. Adafruit / SparkFun / Pimoroni |
+| [Adafruit](https://www.adafruit.com/) | US | 128×64 OLEDs (their default is SSD1306 — needs one-line code change), rotary encoders, jumpers |
+| [AliExpress](https://www.aliexpress.com/) | Global | Cheapest, slowest, quality varies — fine for commodity parts |
 
-### Völkner (DE, often cheaper on individual parts)
+## Regional direct links (EU / DACH)
 
-| Part | Link |
-|---|---|
-| 1.3" OLED SH1106 I²C | [voelkner.de/12146484](https://www.voelkner.de/products/12146484/1.3-quot-128x64-OLED-Display-SH1106-IIC-I2C-Interface-einfarbig-blau.html) |
-| KY-040 Encoder | [voelkner.de/12153902](https://www.voelkner.de/products/12153902/Drehregler-Rotary-Encoder-mit-Breakoutboard-ohne-Gewinde-und-Mutter.html) |
-| Dupont F-F cables (40 pcs) | [voelkner.de/12152443](https://www.voelkner.de/products/12152443/40pin-Jumper-Dupont-Kabel-Female-Female-trennbar-Laenge-0-50-m.html) |
+If you're in Germany, Austria or Switzerland, these ship next-day and
+save you international shipping:
 
-### Outside DE/AT/CH
+| Part | Shop | Link |
+|---|---|---|
+| 1.3" OLED SH1106 I²C | Amazon.de (AZ-Delivery) | [B078J78R45](https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45) |
+| 1.3" OLED SH1106 I²C | Voelkner | [12146484](https://www.voelkner.de/products/12146484/1.3-quot-128x64-OLED-Display-SH1106-IIC-I2C-Interface-einfarbig-blau.html) |
+| KY-040 Encoder (3-pack) | Amazon.de (AZ-Delivery) | [B08247Q69J](https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J) |
+| KY-040 Encoder | Voelkner | [12153902](https://www.voelkner.de/products/12153902/Drehregler-Rotary-Encoder-mit-Breakoutboard-ohne-Gewinde-und-Mutter.html) |
+| Dupont F-F cables (40 pcs) | Amazon.de (AZ-Delivery) | [B07ZPD7PH8](https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8) |
+| Dupont F-F cables (40 pcs) | Voelkner | [12152443](https://www.voelkner.de/products/12152443/40pin-Jumper-Dupont-Kabel-Female-Female-trennbar-Laenge-0-50-m.html) |
 
-- **The Pi Hut**, **Pimoroni** (UK / worldwide)
-- **Adafruit** (US — their 128×64 OLED is SSD1306-based, needs the SSD1306 code change)
-- **AliExpress** — cheapest, slowest, quality varies
+PRs adding direct links for other regions are welcome.
 
-PRs with links for your region are welcome.
-
-## Compatibility matrix
+## Compatibility
 
 | Part | Substitutable with |
 |---|---|
