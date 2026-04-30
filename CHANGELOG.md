@@ -6,6 +6,45 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-04-30
+
+### Added
+
+- **Screensaver eye blinks tied to backend polls.** The big face is no
+  longer static — every successful poll triggers a 300 ms eye-blink
+  on the screensaver:
+  - `state` poll (every 30 s) → **left eye** opens wide: `( o__X )`
+  - `events` poll (every 45 s) → **right eye** opens wide: `( X__o )`
+  - `decisions` poll (every 90 s) → **both eyes squint** (action style):
+    `( >__< )`
+  Priority decisions > events > state, so a rare decision-blink always
+  wins over the more frequent state/events ones. The base mood face
+  underneath flows through unchanged. Build feedback: a static face
+  feels dead on a desk; small irregular blinks tied to real backend
+  activity make the Pet feel alive without being hectic.
+- **Cell-bar at the bottom of the screensaver.** One small dot per
+  active cell across all owned fields (max 30 dots, centred). Visually
+  shows the agent's territorial activity at a glance, even when no
+  detail screen is shown. 0 cells → no bar.
+
+### Implementation
+
+- `PetState` gains `last_state_poll_at` / `last_events_poll_at` /
+  `last_decisions_poll_at` timestamps, set by the three pollers when
+  a request succeeds.
+- `apply_blink(face, ps, now)` — pure function, returns a modified
+  face string for the 300 ms window after each poll.
+- `OledDisplay.draw_big_face(face, cell_count)` — face area trimmed
+  to 60 px so the 4 px cell-bar at the bottom never overlaps the face.
+- `_draw_cell_bar()` — `Any`-typed `draw` argument for luma-canvas
+  compatibility, dot size 3×2 px with 1 px gap.
+
+### Tunables
+
+- `SCREENSAVER_BLINK_DURATION` = 0.3 s
+- Cell-bar geometry hard-coded in `_draw_cell_bar` (3×2 px dots, 1 px
+  gap, 30 dots max — fills 119 px on the 128 px panel).
+
 ## [0.1.8] — 2026-04-30
 
 ### Changed

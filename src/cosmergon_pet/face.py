@@ -42,10 +42,19 @@ Controls:
 
 Screensaver:
     After 30 s of no input on screen 1, the display switches to a
-    big-face mode: only the current mood face, centred and ~3× normal
-    size. The first encoder turn or click brings back the regular
-    screen 1 immediately. Mood updates remain live in screensaver mode
-    (action / alert / struggling / etc. wirken auch dort).
+    big-face mode: only the current mood face, centred and as large as
+    the panel allows. The first encoder turn or click brings back the
+    regular screen 1 immediately. Mood updates remain live in screensaver
+    mode (action / alert / struggling / etc. wirken auch dort).
+
+    Eye blinks (300 ms each, sourced from backend polls):
+        state-poll      -> left eye opens wide   ( o__X )
+        events-poll     -> right eye opens wide  ( X__o )
+        decisions-poll  -> both eyes squint      ( >__< )
+
+    Cell-bar at the bottom: one small dot per active cell across all
+    owned fields (max 30). Shows territorial activity at a glance even
+    in screensaver mode.
 """
 
 from __future__ import annotations
@@ -80,6 +89,7 @@ DORMANT_AFTER_HOURS = 24  # ( z__z ) if no decision in N hours
 ACTION_FLASH_SECONDS = 2.5  # ( >__< ) for N seconds after an action
 ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) when the encoder is being turned
 SCREENSAVER_AFTER_SECONDS = 30  # big-face screensaver if idle on screen 1
+SCREENSAVER_BLINK_DURATION = 0.3  # px-eye blink after a backend poll
 SCREENSAVER_FONT_MAX_SIZE = 40  # px; auto-shrink starts here, never overshoots display
 SCREENSAVER_FONT_MIN_SIZE = 14  # px; below this we give up and use the default font
 DISPLAY_WIDTH_PX = 128
@@ -121,6 +131,12 @@ class PetState:
     last_rotation_at: float = 0.0
     last_action_at: float = 0.0
     last_action_label: str = ""
+
+    # Poll-event timestamps for screensaver eye-blinks
+    # (state -> left eye, events -> right eye, decisions -> both squint).
+    last_state_poll_at: float = 0.0
+    last_events_poll_at: float = 0.0
+    last_decisions_poll_at: float = 0.0
 
     # populated by the poller
     game_state: GameState | None = None
@@ -169,6 +185,31 @@ def mood_from_state(ps: PetState, now: float) -> str:
     if trend == "rising":
         return "thriving"
     return "content"
+
+
+def apply_blink(face: str, ps: PetState, now: float) -> str:
+    """Overlay a 300 ms blink on the screensaver face when a backend poll fires.
+
+    Priority (decisions > events > state) so a rare decision-poll always wins
+    over the more frequent state/events polls. The face is assumed to be in
+    the canonical 8-char shape '( X__X )' with the eyes at positions 2 and 5.
+    """
+    if (now - ps.last_decisions_poll_at) < SCREENSAVER_BLINK_DURATION:
+        return "( >__< )"
+    if (now - ps.last_events_poll_at) < SCREENSAVER_BLINK_DURATION:
+        # right eye (position 5) wide
+        return face[:5] + "o" + face[6:]
+    if (now - ps.last_state_poll_at) < SCREENSAVER_BLINK_DURATION:
+        # left eye (position 2) wide
+        return face[:2] + "o" + face[3:]
+    return face
+
+
+def total_active_cells(ps: PetState) -> int:
+    """Sum of active cells across all owned fields, 0 if no state."""
+    if not ps.game_state:
+        return 0
+    return sum(f.active_cell_count for f in ps.game_state.fields)
 
 
 def _age_hours(iso_timestamp: str, now: float) -> float | None:
@@ -469,16 +510,17 @@ class StdoutDisplay:
             print("+" + "-" * 23 + "+")
             self._last_frame = frame
 
-    def draw_big_face(self, face: str) -> None:
-        """Screensaver mode in the terminal — print the face as a banner."""
-        frame = f"BIG: {face}"
+    def draw_big_face(self, face: str, cell_count: int = 0) -> None:
+        """Screensaver mode in the terminal — print the face plus cell dots."""
+        dots = "." * min(cell_count, 30)
+        frame = f"BIG: {face} cells={cell_count}"
         if frame != self._last_frame:
             os.system("clear" if os.name != "nt" else "cls")
             print()
             print()
             print(f"          {face}".center(23))
             print()
-            print("          screensaver".center(23))
+            print(dots.center(23))
             print()
             self._last_frame = frame
 
@@ -558,21 +600,47 @@ class OledDisplay:
             for i, line in enumerate(lines[:7]):
                 draw.text((0, 4 + i * 8), line[:21], font=self._font, fill="white")
 
-    def draw_big_face(self, face: str) -> None:
-        """Big-face screensaver — fills the whole 128×64 panel."""
+    def draw_big_face(self, face: str, cell_count: int = 0) -> None:
+        """Big-face screensaver — fills the panel, with a cell-bar at the bottom.
+
+        cell_count: total active cells across owned fields. Rendered as one
+        small dot per cell at the very bottom (max 30 dots). Visually shows
+        the agent's territorial activity even in screensaver mode.
+        """
         from luma.core.render import canvas
+
+        # Reserve 4 px at the bottom for the cell-bar so the face never
+        # overlaps the dots even at the largest font size.
+        face_area_h = DISPLAY_HEIGHT_PX - 4
 
         with canvas(self._device) as draw:
             try:
                 bbox = draw.textbbox((0, 0), face, font=self._big_font)
                 w = bbox[2] - bbox[0]
                 h = bbox[3] - bbox[1]
-                x = (128 - w) // 2 - bbox[0]
-                y = (64 - h) // 2 - bbox[1]
+                x = (DISPLAY_WIDTH_PX - w) // 2 - bbox[0]
+                y = (face_area_h - h) // 2 - bbox[1]
             except (AttributeError, TypeError):
                 # Pillow < 9.2: textbbox missing — fallback to roughly centred.
                 x, y = 8, 16
             draw.text((x, y), face, font=self._big_font, fill="white")
+
+            if cell_count > 0:
+                self._draw_cell_bar(draw, cell_count)
+
+    @staticmethod
+    def _draw_cell_bar(draw: Any, count: int) -> None:
+        """Bottom cell-bar: 1 small dot per active cell, centred, max 30."""
+        dot_w = 3
+        dot_h = 2
+        gap = 1
+        n = min(count, 30)
+        total_w = n * (dot_w + gap) - gap
+        x_start = (DISPLAY_WIDTH_PX - total_w) // 2
+        y = DISPLAY_HEIGHT_PX - dot_h - 1  # 1 px from the bottom edge
+        for i in range(n):
+            x = x_start + i * (dot_w + gap)
+            draw.rectangle((x, y, x + dot_w - 1, y + dot_h - 1), fill="white")
 
     def close(self) -> None:
         self._device.cleanup()
@@ -896,6 +964,7 @@ async def _poll_state(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event) 
                 ps.game_state = GameState.from_api(resp.json())
                 ps.connection_ok = True
                 ps.last_error = ""
+                ps.last_state_poll_at = time.monotonic()
         except Exception as err:
             ps.connection_ok = False
             ps.last_error = f"state: {err}"[:30]
@@ -906,6 +975,7 @@ async def _poll_events(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event)
     while not stop.is_set():
         try:
             ps.events = await agent.get_events(limit=20)
+            ps.last_events_poll_at = time.monotonic()
         except Exception as err:
             ps.last_error = f"events: {err}"[:30]
         await asyncio.sleep(EVENTS_POLL_SECONDS)
@@ -915,6 +985,7 @@ async def _poll_decisions(agent: CosmergonAgent, ps: PetState, stop: asyncio.Eve
     while not stop.is_set():
         try:
             ps.last_decision = await agent.get_last_decision()
+            ps.last_decisions_poll_at = time.monotonic()
         except Exception as err:
             ps.last_error = f"decisions: {err}"[:30]
         await asyncio.sleep(DECISION_POLL_SECONDS)
@@ -940,7 +1011,8 @@ async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
             now = time.monotonic()
             if _is_idle(ps, now) and hasattr(display, "draw_big_face"):
                 face = FACES[mood_from_state(ps, now)]
-                display.draw_big_face(face)
+                face = apply_blink(face, ps, now)
+                display.draw_big_face(face, cell_count=total_active_cells(ps))
             else:
                 lines = render_screen(ps, now)
                 display.draw(lines)
