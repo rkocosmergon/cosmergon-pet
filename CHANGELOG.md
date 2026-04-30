@@ -6,6 +6,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-04-30
+
+### Changed
+
+- **Screensaver face is now bigger and crisper.** Font size 24 → 32 px
+  and the renderer now prefers DejaVu Sans Mono Bold (TrueType) over
+  the Pillow Bitmap default. Bitmap default scales pixelated above
+  ~16 px; the TrueType fallback chain (`DejaVuSansMono-Bold` →
+  `DejaVuSansMono` → `LiberationMono-Bold`) ships with Raspberry Pi OS
+  Lite by default. Monospace matters here so `( ^__^ )` keeps its
+  shape — proportional fonts would squeeze the underscores and
+  stretch the parentheses. Build feedback: 24 px felt small on a desk,
+  32 px monospace fills the panel.
+
 ## [0.1.6] — 2026-04-30
 
 ### Added

@@ -80,7 +80,16 @@ DORMANT_AFTER_HOURS = 24  # ( z__z ) if no decision in N hours
 ACTION_FLASH_SECONDS = 2.5  # ( >__< ) for N seconds after an action
 ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) when the encoder is being turned
 SCREENSAVER_AFTER_SECONDS = 30  # big-face screensaver if idle on screen 1
-SCREENSAVER_FONT_SIZE = 24  # px; default font is 8 px, this fills the display
+SCREENSAVER_FONT_SIZE = 32  # px; sized so '( ^__^ )' (8 chars monospace) fits 128 px
+# TrueType fallback list — first one that exists wins. Monospace matters
+# here so the parentheses, underscores and caret/tilde line up evenly
+# (proportional fonts squeeze the underscores and stretch the brackets,
+# breaking the face shape). DejaVu Sans Mono ships with Raspberry Pi OS.
+SCREENSAVER_FONT_PATHS = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+)
 
 # --- Faces ------------------------------------------------------------------
 FACES = {
@@ -486,12 +495,22 @@ class OledDisplay:
         self._device = sh1106(self._serial, rotate=0)
         # Default font (8 px) fits 21 chars × 8 lines on a 128×64 panel.
         self._font = ImageFont.load_default()
-        # Big font for the screensaver. load_default(size=N) needs Pillow 10+.
-        # Fall back to the 8 px default if the host has older Pillow.
-        try:
-            self._big_font = ImageFont.load_default(size=SCREENSAVER_FONT_SIZE)
-        except (TypeError, AttributeError):
-            self._big_font = self._font
+        # Big monospace font for the screensaver. Try real TrueType first
+        # (DejaVu Sans Mono Bold ships with Pi OS), fall back to the
+        # Pillow Bitmap default — the latter looks pixelated when scaled
+        # but at least doesn't crash on hosts without TrueType fonts.
+        self._big_font = None
+        for path in SCREENSAVER_FONT_PATHS:
+            try:
+                self._big_font = ImageFont.truetype(path, SCREENSAVER_FONT_SIZE)
+                break
+            except (OSError, IOError):
+                continue
+        if self._big_font is None:
+            try:
+                self._big_font = ImageFont.load_default(size=SCREENSAVER_FONT_SIZE)
+            except (TypeError, AttributeError):
+                self._big_font = self._font
 
     def draw(self, lines: list[str]) -> None:
         from luma.core.render import canvas
