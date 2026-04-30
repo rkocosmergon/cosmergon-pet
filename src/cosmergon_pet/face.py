@@ -80,7 +80,10 @@ DORMANT_AFTER_HOURS = 24  # ( z__z ) if no decision in N hours
 ACTION_FLASH_SECONDS = 2.5  # ( >__< ) for N seconds after an action
 ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) when the encoder is being turned
 SCREENSAVER_AFTER_SECONDS = 30  # big-face screensaver if idle on screen 1
-SCREENSAVER_FONT_SIZE = 32  # px; sized so '( ^__^ )' (8 chars monospace) fits 128 px
+SCREENSAVER_FONT_MAX_SIZE = 40  # px; auto-shrink starts here, never overshoots display
+SCREENSAVER_FONT_MIN_SIZE = 14  # px; below this we give up and use the default font
+DISPLAY_WIDTH_PX = 128
+DISPLAY_HEIGHT_PX = 64
 # TrueType fallback list — first one that exists wins. Monospace matters
 # here so the parentheses, underscores and caret/tilde line up evenly
 # (proportional fonts squeeze the underscores and stretch the brackets,
@@ -495,22 +498,53 @@ class OledDisplay:
         self._device = sh1106(self._serial, rotate=0)
         # Default font (8 px) fits 21 chars × 8 lines on a 128×64 panel.
         self._font = ImageFont.load_default()
-        # Big monospace font for the screensaver. Try real TrueType first
-        # (DejaVu Sans Mono Bold ships with Pi OS), fall back to the
-        # Pillow Bitmap default — the latter looks pixelated when scaled
-        # but at least doesn't crash on hosts without TrueType fonts.
-        self._big_font = None
+        # Big monospace font for the screensaver — adaptive: starts at
+        # SCREENSAVER_FONT_MAX_SIZE and shrinks until '( ^__^ )' (the
+        # widest face string) fits in DISPLAY_WIDTH_PX with a small margin.
+        # This keeps the face as large as possible without ever clipping
+        # the parentheses.
+        self._big_font = self._pick_big_font(ImageFont)
+
+    @staticmethod
+    def _pick_big_font(image_font_module) -> Any:
+        """Pick the largest font where '( ^__^ )' fits the display width.
+
+        Tries TrueType paths first (crisp at any size), falls back to the
+        Pillow Bitmap default with the load_default(size=N) signature
+        (Pillow 10+), and finally to the 8 px default if everything else
+        fails on this host.
+        """
+        sample = "( ^__^ )"
+        max_width = DISPLAY_WIDTH_PX - 4  # 2 px safety on each side
+
+        def _fits(font: Any) -> bool:
+            if hasattr(font, "getbbox"):
+                bbox = font.getbbox(sample)
+                return (bbox[2] - bbox[0]) <= max_width
+            # Pre-9.2 Pillow: getsize was the public API
+            if hasattr(font, "getsize"):
+                return font.getsize(sample)[0] <= max_width
+            return True  # can't measure — assume it fits and hope
+
         for path in SCREENSAVER_FONT_PATHS:
+            for size in range(SCREENSAVER_FONT_MAX_SIZE, SCREENSAVER_FONT_MIN_SIZE - 1, -1):
+                try:
+                    font = image_font_module.truetype(path, size)
+                except OSError:
+                    break  # this path doesn't exist — try the next
+                if _fits(font):
+                    return font
+
+        # No TrueType worked — try Pillow 10+ Bitmap default with size kwarg.
+        for size in range(SCREENSAVER_FONT_MAX_SIZE, SCREENSAVER_FONT_MIN_SIZE - 1, -1):
             try:
-                self._big_font = ImageFont.truetype(path, SCREENSAVER_FONT_SIZE)
-                break
-            except (OSError, IOError):
-                continue
-        if self._big_font is None:
-            try:
-                self._big_font = ImageFont.load_default(size=SCREENSAVER_FONT_SIZE)
+                font = image_font_module.load_default(size=size)
             except (TypeError, AttributeError):
-                self._big_font = self._font
+                break  # Pillow < 10 — load_default has no size kwarg
+            if _fits(font):
+                return font
+
+        return image_font_module.load_default()
 
     def draw(self, lines: list[str]) -> None:
         from luma.core.render import canvas
