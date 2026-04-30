@@ -255,8 +255,11 @@ def _render_face(ps: PetState, now: float) -> list[str]:
     energy_str = f"{int(state.energy)} E" if state else "--"
     name = state.agent_name if state and state.agent_name else "agent"
     headline = _headline_for(state) if state else ""
+    # 5 body lines + header + separator = 7 total. Some SH1106 1.3" modules
+    # crop the last 1-2 px on the y-axis; rendering 8 lines at 8 px each
+    # leaves no margin and the bottom line gets clipped. Reported as a
+    # build feedback in S156.
     return [
-        "",
         face.center(21),
         mood.center(21),
         "",
@@ -310,7 +313,6 @@ def _render_territory(ps: PetState, now: float) -> list[str]:
         f"Cubes:   {cubes}",
         f"Cells:   {total_cells}",
         f"Spores:  {spores}",
-        "",
         f"Compass: {state.compass_preset or 'unset'}",
     ]
 
@@ -340,7 +342,6 @@ def _render_benchmark(ps: PetState, now: float) -> list[str]:
             "cosmergon.com",
         ]
     return [
-        "",
         "Days to benchmark:",
         "",
         f"  {sit.benchmark_days_remaining}",
@@ -354,7 +355,7 @@ def _render_journal(ps: PetState, now: float) -> list[str]:
     if not decision:
         return ["", "No decisions yet."]
     journal = decision.get("journal") or decision.get("reasoning") or ""
-    return _wrap(journal, width=21, max_lines=6)
+    return _wrap(journal, width=21, max_lines=5)
 
 
 def _render_last_action(ps: PetState, now: float) -> list[str]:
@@ -367,7 +368,6 @@ def _render_last_action(ps: PetState, now: float) -> list[str]:
     lines = [
         f"Action:  {action[:12]}",
         f"Result:  {outcome[:12]}",
-        "",
     ]
     return lines + _wrap(reasoning, width=21, max_lines=3)
 
@@ -468,9 +468,14 @@ class OledDisplay:
     def draw(self, lines: list[str]) -> None:
         from luma.core.render import canvas
 
+        # 7 lines × 8 px + 4 px top margin = 60 px on a 64 px display.
+        # Some SH1106 1.3" modules crop the last 1-2 px on the y-axis
+        # (and the default PIL font on Pillow 11+ is taller than 8 px).
+        # Rendering only 7 lines with a top margin gives us a safe
+        # bottom buffer everywhere. Build feedback S156 (v0.1.5).
         with canvas(self._device) as draw:
-            for i, line in enumerate(lines[:8]):
-                draw.text((0, i * 8), line[:21], font=self._font, fill="white")
+            for i, line in enumerate(lines[:7]):
+                draw.text((0, 4 + i * 8), line[:21], font=self._font, fill="white")
 
     def close(self) -> None:
         self._device.cleanup()

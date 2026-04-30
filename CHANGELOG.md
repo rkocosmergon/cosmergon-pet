@@ -6,6 +6,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-04-30
+
+### Fixed
+
+- **OLED bottom-line clipping.** Some SH1106 1.3" I²C modules and the
+  default PIL font on Pillow 11+ crop the last 1-2 px on the y-axis;
+  the previous layout rendered 8 lines × 8 px = 64 px with no margin,
+  so the bottom line of the face screen (and any 6-body-line screen)
+  got partially clipped. The display layer now renders **7 lines with
+  a 4 px top margin** (60 px total on a 64 px panel) and all screen
+  renderers were normalised to **≤5 body lines** (header + separator +
+  body = 7 lines). Reported as build feedback S156 — visible on the
+  Face screen as the trailing world-event headline being half-cut.
+
 ### Changed
 
 - **Build guide is now in English** and trimmed to three pages
