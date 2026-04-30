@@ -54,6 +54,28 @@ cosmergon-pet --simulate
 
 Output goes to the terminal, keyboard controls replace the rotary knob.
 
+### Updating
+
+Re-run the same installer line. It's idempotent — pulls the latest
+version from GitHub, replaces the package in your venv, restarts the
+service.
+
+```bash
+sudo systemctl stop cosmergon-pet      # frees ~80 MB during the build
+curl -sL https://raw.githubusercontent.com/rkocosmergon/cosmergon-pet/main/install/install.sh | bash
+```
+
+On a Pi Zero 2 W (512 MB RAM), stop the service first — otherwise the
+gcc build for `rpi-lgpio` can run out of memory. On Pi 4/5 with 4+ GB
+the `stop` line is optional. Re-run takes 3–8 min on Zero 2 W, 1–3 min
+on Pi 4/5.
+
+Verify the version after:
+
+```bash
+~/cosmergon-env/bin/python -c "import cosmergon_pet; print(cosmergon_pet.__version__)"
+```
+
 ## Hardware options
 
 | Build | Parts | Price (EUR) | Notes |
