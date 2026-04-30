@@ -6,6 +6,30 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-04-30
+
+### Added
+
+- **Big-face screensaver.** After 30 s of no input on screen 1, the
+  display switches to a centred ~24 px face (3× the default font size),
+  filling the panel. The first encoder turn or click brings back the
+  regular screen 1 immediately. Mood updates remain live in screensaver
+  mode — `( -__- )` flips to `( ;__; )` if a catastrophe hits, etc.
+  Long-press still pauses/resumes as everywhere else. Build feedback:
+  the small-text default felt static on a desk; a big face turns the
+  Pet into a desk companion at a glance.
+
+### Implementation
+
+- `OledDisplay.draw_big_face(face)` — uses `ImageFont.load_default(size=24)`
+  (Pillow 10+) with `textbbox`-based centring, falls back to the default
+  8 px font on older Pillow.
+- `StdoutDisplay.draw_big_face(face)` — banner mode in the terminal
+  for `--simulate` development.
+- `_is_idle(ps, now)` — pure check: only screen 1, no menu open, idle
+  beyond `SCREENSAVER_AFTER_SECONDS` (30 s).
+- Tunables: `SCREENSAVER_AFTER_SECONDS`, `SCREENSAVER_FONT_SIZE`.
+
 ## [0.1.5] — 2026-04-30
 
 ### Fixed

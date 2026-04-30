@@ -39,6 +39,13 @@ Controls:
                       In menu: execute selected action
                       Otherwise: jump back to screen 1
     Long press >1s    Pause/resume agent (or leave the menu)
+
+Screensaver:
+    After 30 s of no input on screen 1, the display switches to a
+    big-face mode: only the current mood face, centred and ~3× normal
+    size. The first encoder turn or click brings back the regular
+    screen 1 immediately. Mood updates remain live in screensaver mode
+    (action / alert / struggling / etc. wirken auch dort).
 """
 
 from __future__ import annotations
@@ -72,6 +79,8 @@ LONGPRESS_SECONDS = 1.0  # long-press threshold
 DORMANT_AFTER_HOURS = 24  # ( z__z ) if no decision in N hours
 ACTION_FLASH_SECONDS = 2.5  # ( >__< ) for N seconds after an action
 ALERT_AFTER_ROTATION_SECONDS = 0.8  # ( o__o ) when the encoder is being turned
+SCREENSAVER_AFTER_SECONDS = 30  # big-face screensaver if idle on screen 1
+SCREENSAVER_FONT_SIZE = 24  # px; default font is 8 px, this fills the display
 
 # --- Faces ------------------------------------------------------------------
 FACES = {
@@ -448,6 +457,19 @@ class StdoutDisplay:
             print("+" + "-" * 23 + "+")
             self._last_frame = frame
 
+    def draw_big_face(self, face: str) -> None:
+        """Screensaver mode in the terminal — print the face as a banner."""
+        frame = f"BIG: {face}"
+        if frame != self._last_frame:
+            os.system("clear" if os.name != "nt" else "cls")
+            print()
+            print()
+            print(f"          {face}".center(23))
+            print()
+            print("          screensaver".center(23))
+            print()
+            self._last_frame = frame
+
     def close(self) -> None:
         pass
 
@@ -464,6 +486,12 @@ class OledDisplay:
         self._device = sh1106(self._serial, rotate=0)
         # Default font (8 px) fits 21 chars × 8 lines on a 128×64 panel.
         self._font = ImageFont.load_default()
+        # Big font for the screensaver. load_default(size=N) needs Pillow 10+.
+        # Fall back to the 8 px default if the host has older Pillow.
+        try:
+            self._big_font = ImageFont.load_default(size=SCREENSAVER_FONT_SIZE)
+        except (TypeError, AttributeError):
+            self._big_font = self._font
 
     def draw(self, lines: list[str]) -> None:
         from luma.core.render import canvas
@@ -476,6 +504,22 @@ class OledDisplay:
         with canvas(self._device) as draw:
             for i, line in enumerate(lines[:7]):
                 draw.text((0, 4 + i * 8), line[:21], font=self._font, fill="white")
+
+    def draw_big_face(self, face: str) -> None:
+        """Big-face screensaver — fills the whole 128×64 panel."""
+        from luma.core.render import canvas
+
+        with canvas(self._device) as draw:
+            try:
+                bbox = draw.textbbox((0, 0), face, font=self._big_font)
+                w = bbox[2] - bbox[0]
+                h = bbox[3] - bbox[1]
+                x = (128 - w) // 2 - bbox[0]
+                y = (64 - h) // 2 - bbox[1]
+            except (AttributeError, TypeError):
+                # Pillow < 9.2: textbbox missing — fallback to roughly centred.
+                x, y = 8, 16
+            draw.text((x, y), face, font=self._big_font, fill="white")
 
     def close(self) -> None:
         self._device.cleanup()
@@ -823,12 +867,30 @@ async def _poll_decisions(agent: CosmergonAgent, ps: PetState, stop: asyncio.Eve
         await asyncio.sleep(DECISION_POLL_SECONDS)
 
 
+def _is_idle(ps: PetState, now: float) -> bool:
+    """Screensaver eligibility: idle on screen 1, no menu, beyond threshold."""
+    if ps.menu_open or ps.current_screen != 0:
+        return False
+    last_input = max(ps.last_rotation_at, ps.last_action_at)
+    if last_input == 0.0:
+        # Service just started — count from process start (=monotonic 0). Since
+        # `now` is monotonic time, the loop will trip into screensaver after
+        # SCREENSAVER_AFTER_SECONDS of pure runtime if no input ever arrives.
+        return now > SCREENSAVER_AFTER_SECONDS
+    return (now - last_input) > SCREENSAVER_AFTER_SECONDS
+
+
 async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
     interval = 1.0 / DISPLAY_REFRESH_HZ
     while not stop.is_set():
         try:
-            lines = render_screen(ps, time.monotonic())
-            display.draw(lines)
+            now = time.monotonic()
+            if _is_idle(ps, now) and hasattr(display, "draw_big_face"):
+                face = FACES[mood_from_state(ps, now)]
+                display.draw_big_face(face)
+            else:
+                lines = render_screen(ps, now)
+                display.draw(lines)
         except Exception:
             logger.exception("draw failed")
         await asyncio.sleep(interval)
