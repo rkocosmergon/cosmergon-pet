@@ -98,7 +98,7 @@ def main() -> None:
     for i, line in enumerate(
         [
             "Raspberry Pi + OLED + rotary encoder",
-            "14-49 EUR  ·  7 wires, no soldering",
+            "14-49 EUR  ·  9 wires, no soldering",
             "30 min from blank SD card to running Pet",
         ]
     ):

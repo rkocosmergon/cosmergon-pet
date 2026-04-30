@@ -211,7 +211,7 @@ def build() -> None:
             "~8 EUR",
         ],
         ["KY-040 rotary encoder", "Or any quadrature encoder with push-button.", "~3 EUR"],
-        ["Female-female Dupont jumpers", "Seven cables. No soldering.", "~3 EUR"],
+        ["Female-female Dupont jumpers", "Nine cables. No soldering.", "~3 EUR"],
     ]
     t = Table(parts, colWidths=[55 * mm, 87 * mm, 22 * mm])
     t.setStyle(TableStyle(TBL))
@@ -272,8 +272,8 @@ def build() -> None:
     story.append(Paragraph("2. Wire it up", S_H1))
     story.append(
         Paragraph(
-            "Power the Pi off first. Seven jumper wires, no soldering. Pin "
-            "numbers refer to the physical 40-pin header.",
+            "Power the Pi off first. Nine jumper wires (4 OLED + 5 encoder), "
+            "no soldering. Pin numbers refer to the physical 40-pin header.",
             S_BODY,
         )
     )

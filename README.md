@@ -19,7 +19,7 @@ click to execute.
 
 - **~14 EUR** of parts if you already own any 40-pin Raspberry Pi
 - **~49 EUR** for a complete build from scratch (Pi Zero 2 W + peripherals)
-- **7 wires, no soldering** — everything plugs into the GPIO header
+- **9 wires, no soldering** — everything plugs into the GPIO header (4 for the OLED, 5 for the encoder)
 - **30 minutes** from blank SD card to a face on the display
 - **No account needed for first start** — the agent auto-registers as
   anonymous (Free tier, rolling 24h session, 1000 energy). Existing
