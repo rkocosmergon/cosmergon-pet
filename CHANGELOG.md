@@ -6,7 +6,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.1.7] — 2026-04-30
+## [0.1.8] — 2026-04-30
+
+### Changed
+
+- **Screensaver font is now adaptive.** Replaces the fixed 32 px from
+  v0.1.7 (which clipped the parentheses on a 128 px panel) with an
+  auto-shrink loop: starts at 40 px and steps down until `( ^__^ )`
+  measured via `getbbox` fits the display width minus a 2 px safety
+  margin on each side. Result: as large as possible, never clipped.
+  Tries DejaVu Sans Mono Bold → DejaVu Sans Mono → Liberation Mono
+  Bold first (TrueType, crisp at any size), falls back to the Pillow
+  Bitmap default and finally the 8 px default if the host has no
+  TrueType fonts at all.
+
+### Fixed
+
+- **CI lint UP024.** v0.1.7 had `except (OSError, IOError)` — IOError
+  is a Python 3 alias for OSError, the tuple is redundant. Replaced
+  with plain `except OSError`. CI Python-lint workflow is back to green.
+
+## [0.1.7] — 2026-04-30 (CI lint fail, superseded by 0.1.8)
 
 ### Changed
 
@@ -19,6 +39,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shape — proportional fonts would squeeze the underscores and
   stretch the parentheses. Build feedback: 24 px felt small on a desk,
   32 px monospace fills the panel.
+
+### Fixed
+
+- *(NOT in this release — see 0.1.8)*: 32 px clipped parentheses on
+  a 128 px panel; CI lint failed on `(OSError, IOError)` tuple.
 
 ## [0.1.6] — 2026-04-30
 
