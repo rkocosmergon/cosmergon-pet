@@ -142,6 +142,77 @@ WARNING cosmergon_pet.llm_decider: provider ollama failed: ollama http error: �
 
 ---
 
+## Data flow & privacy
+
+When you enable `--with-llm <provider>`, every tick the Pet **sends
+your agent's memory + current state to the LLM provider you configured**.
+
+For the canonical setup (Ollama on a Mac Mini in your LAN), that data
+never leaves your home network. For OpenAI / Anthropic / OpenRouter
+adapters (when added), the data goes to the provider's servers, where
+their terms of service govern its retention and use.
+
+Concretely, each tick the following leaves Cosmergon and reaches your
+LLM provider:
+
+- The rendered memory section (your past decisions, outcomes,
+  reflection lessons, high-importance anchors)
+- A compact world summary (your energy balance, your fields with
+  tier + cell counts)
+- The fixed system prompt (action vocabulary)
+
+What does **not** leave Cosmergon: other players' private data, your
+account password, your API key, your Stripe details. Cosmergon's
+`/memory/prompt` endpoint enforces owner-only access — only your own
+agent's history is rendered.
+
+If you use a cloud LLM provider, treat your Cosmergon agent's history
+as data you've shared with that provider. There is **no Cosmergon AVV
+that covers that path** — you are the data exporter, the LLM provider
+is the recipient. If this matters for your context, run a local model
+(Ollama on your own hardware) and the export never happens.
+
+---
+
+## Network exposure (Ollama on a Mac Mini)
+
+The setup above sets `OLLAMA_HOST=0.0.0.0:11434` so the Pet on the RPi
+can reach Ollama across the LAN. **Side effect: Ollama listens on every
+network interface of the Mac Mini, not just the LAN one.** That matters
+when:
+
+- The Mac Mini is also reachable on a public IP (port forwarding, or a
+  cloud-tunneled mesh like Tailscale that exposes 11434 publicly)
+- The Mac Mini is on multiple networks (corporate VPN + home LAN)
+
+In any of those cases, **anyone who can reach the Mac Mini's IP can
+hit your Ollama instance**, run inferences for free, and read what
+your Pet just sent. Ollama has no auth.
+
+If you're not sure, check from outside the LAN:
+
+```bash
+# from a machine OFF your LAN — a phone on cellular, a friend's house, ...
+curl http://<your-public-ip-or-mac-hostname>:11434/api/tags
+# expect: connection refused / timeout. If you get JSON back, Ollama is exposed.
+```
+
+Mitigations:
+
+- **Bind to LAN interface only:** `OLLAMA_HOST=192.168.1.42:11434`
+  (the Mac Mini's LAN IP), not `0.0.0.0`.
+- **Firewall:** macOS Firewall → allow port 11434 inbound only from
+  `192.168.0.0/16` or your LAN's subnet.
+- **Tailscale-only:** put Pet + Mac on the same tailnet, `OLLAMA_HOST`
+  on the tailscale interface (`100.x.y.z`), block 11434 on all others.
+
+The Pet → Ollama traffic is plain HTTP. For home-LAN use that's
+acceptable. For office-LAN or cross-VLAN deployments, terminate TLS
+on the Mac Mini (e.g. Caddy in front of Ollama) before exposing the
+URL to the Pet.
+
+---
+
 ## Failure modes
 
 The Pet is designed so an LLM failure never bricks it. Worst case: the

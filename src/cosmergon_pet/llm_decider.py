@@ -49,6 +49,31 @@ DEFAULT_INTERVAL_S = 60.0
 """Default seconds between LLM decisions. Matches the Cosmergon tick (60 s)."""
 
 
+VALID_ACTIONS: frozenset[str] = frozenset({
+    "place_cells",
+    "evolve",
+    "create_field",
+    "transfer_energy",
+    "wait",
+})
+"""Client-side allowlist of actions the LLM may emit.
+
+Defense-in-depth on top of the backend's per-action validation:
+a compromised LLM provider (or prompt injection through the memory
+section) cannot trigger arbitrary Cosmergon API endpoints via the Pet.
+Anything outside this set is dropped before `agent.act()` is called.
+
+Keep in sync with the SYSTEM_PROMPT below.
+"""
+
+# Sensitive params we never log verbatim — UUIDs of other players,
+# transfer amounts. The action name + param keys are still logged.
+_SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset({
+    "to_player_id",
+    "amount",
+})
+
+
 SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game of Life economy.
 
 Each tick (~60 s) you choose ONE action. Output strict JSON, nothing else:
@@ -130,6 +155,18 @@ async def _one_decision(
     action = decision["action"]
     params = decision["params"]
 
+    # Defense-in-depth: drop actions outside the allowlist before they
+    # touch the Cosmergon API. The backend re-validates per-action,
+    # so this is a second layer (S157 security panel finding K1).
+    if action not in VALID_ACTIONS:
+        logger.warning(
+            "llm emitted disallowed action %r — dropped (allowed: %s)",
+            action, sorted(VALID_ACTIONS),
+        )
+        if on_decision is not None:
+            on_decision("(disallowed)", {}, elapsed, False)
+        return
+
     if action == "wait":
         logger.info("llm chose wait (%.1fs)", elapsed)
         if on_decision is not None:
@@ -145,10 +182,26 @@ async def _one_decision(
 
     logger.info(
         "llm action=%s params=%s success=%s decided_in=%.1fs",
-        action, params, success, elapsed,
+        action, _redact_params(params), success, elapsed,
     )
     if on_decision is not None:
         on_decision(action, params, elapsed, success)
+
+
+def _redact_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Return params with sensitive values redacted for logging.
+
+    UUIDs of other players + transfer amounts are pseudonymous PII —
+    we keep the keys (so the log stays useful for debugging) and
+    replace the values with ``<redacted>`` (S157 security panel
+    finding E1).
+    """
+    if not params:
+        return params
+    return {
+        k: ("<redacted>" if k in _SENSITIVE_PARAM_KEYS else v)
+        for k, v in params.items()
+    }
 
 
 async def _safe_memory(agent: CosmergonAgent) -> str:

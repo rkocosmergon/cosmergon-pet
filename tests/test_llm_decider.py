@@ -148,6 +148,52 @@ def test_safe_memory_tolerates_fetch_exception() -> None:
     assert "failed" in out.lower()
 
 
+def test_disallowed_action_dropped_not_executed() -> None:
+    """S157 security panel K1: action outside VALID_ACTIONS must be dropped
+    before agent.act() is called — defense-in-depth against compromised LLM.
+    """
+    mod = _import_or_skip()
+    agent = _make_agent()
+    provider = _make_provider({"action": "delete_account", "params": {}})
+    callback_calls: list[tuple] = []
+
+    def on_decision(action: str, params: dict, elapsed: float, success: bool) -> None:
+        callback_calls.append((action, success))
+
+    asyncio.run(mod._one_decision(agent, provider, on_decision))
+    agent.act.assert_not_awaited()
+    assert callback_calls == [("(disallowed)", False)]
+
+
+def test_valid_actions_set_matches_system_prompt() -> None:
+    """The action allowlist must list exactly the actions advertised in the
+    SYSTEM_PROMPT — drift here breaks the LLM's expected vocabulary.
+    """
+    mod = _import_or_skip()
+    expected = {"place_cells", "evolve", "create_field", "transfer_energy", "wait"}
+    assert mod.VALID_ACTIONS == expected
+    for action in expected:
+        assert action in mod.SYSTEM_PROMPT, (
+            f"{action} listed in VALID_ACTIONS but missing from SYSTEM_PROMPT"
+        )
+
+
+def test_redact_params_strips_sensitive_keys() -> None:
+    """S157 security panel E1: transfer params must not appear verbatim in logs."""
+    mod = _import_or_skip()
+    redacted = mod._redact_params(
+        {"to_player_id": "abc-uuid", "amount": 1000, "field_id": "f1"}
+    )
+    assert redacted["to_player_id"] == "<redacted>"
+    assert redacted["amount"] == "<redacted>"
+    assert redacted["field_id"] == "f1"  # not sensitive
+
+
+def test_redact_params_handles_empty() -> None:
+    mod = _import_or_skip()
+    assert mod._redact_params({}) == {}
+
+
 if __name__ == "__main__":
     test_one_decision_executes_action()
     test_one_decision_wait_skips_act()
