@@ -116,6 +116,31 @@ FACES = {
 
 COMPASS_PRESETS = ("attack", "defend", "grow", "trade", "explore")
 
+# --- Evolution constants (mirror server: backend/app/core/entity_tiers.py) --
+# Pet zeigt "Evolve" nur wenn ALLE Server-Checks tatsächlich grün wären.
+# Ohne diesen Mirror landeten zwei Klicks im "Evolve"-Menü oft im 400-Reject
+# oder zogen 1000 E ab obwohl das Label "~500 E" sagte (S157 Forensik
+# Comet-hand-Field). Server-Tabellen müssen synchron gepflegt werden — bei
+# Änderung in entity_tiers.py: hier nachziehen.
+EVOLUTION_ENERGY_COST: dict[int, int] = {
+    1: 1_000,  # T1 → T2
+    2: 5_000,  # T2 → T3
+    3: 25_000,  # T3 → T4
+    4: 100_000,  # T4 → T5
+}
+REIFE_THRESHOLDS: dict[int, int] = {
+    2: 100,  # next_tier=2 needs reife >= 100
+    3: 500,
+    4: 2_000,
+    5: 10_000,
+}
+TIER_REQUIRED_TYPE: dict[int, str] = {
+    2: "oscillator",
+    3: "spaceship",
+    4: "gun",
+    5: "breeder",
+}
+
 
 @dataclass
 class PetState:
@@ -142,6 +167,14 @@ class PetState:
     game_state: GameState | None = None
     events: list[dict] = field(default_factory=list)
     last_decision: dict | None = None
+
+    # S157: User-getriggerte Aktion (Encoder-Klick) und ihr Server-Outcome.
+    # Vor S157 schluckte _execute_action Erfolge stillschweigend, der Pet zeigte
+    # nur einen 1-Sek Face-Mood-Wechsel. Bei Comet-hand verschwanden 2x 1000 E
+    # ohne sichtbares Pet-Feedback. Screen 7 (Last Action) zeigt jetzt User-
+    # Aktionen parallel zu Server-LLM-Decisions.
+    # Schema: {"action": str, "status": "ok"|"fail"|"skipped", "detail": str, "ts": float}
+    last_user_action: dict | None = None
     connection_ok: bool = False
     last_error: str = ""
 
@@ -228,6 +261,35 @@ def _age_hours(iso_timestamp: str, now: float) -> float | None:
 # ----------------------------------------------------------------------------
 
 
+def _find_evolvable_field(state: GameState, energy: float) -> Any | None:
+    """First owned field that meets ALL server-side evolve criteria.
+
+    Mirrors backend/app/api/v1/endpoints/agent_game.py:_handle_evolve checks:
+    - entity_tier > 0 and < 5
+    - reife_score >= REIFE_THRESHOLDS[next_tier]
+    - entity_type matches TIER_REQUIRED_TYPE[next_tier]
+    - energy >= EVOLUTION_ENERGY_COST[entity_tier]
+
+    Returns first matching field or None. Pet zeigt "Evolve" nur wenn
+    ein Server-Call tats\u00e4chlich erfolgreich w\u00e4re.
+    """
+    for f in state.fields:
+        tier = f.entity_tier or 0
+        if tier <= 0 or tier >= 5:
+            continue
+        next_tier = tier + 1
+        if (f.reife_score or 0) < REIFE_THRESHOLDS.get(next_tier, 999_999):
+            continue
+        required_type = TIER_REQUIRED_TYPE.get(next_tier)
+        if required_type and f.entity_type != required_type:
+            continue
+        cost = EVOLUTION_ENERGY_COST.get(tier, 0)
+        if energy < cost:
+            continue
+        return f
+    return None
+
+
 def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
     """Menu entries derived from the agent's current situation.
 
@@ -243,7 +305,6 @@ def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
 
     situation = state.world_briefing.situation if state.world_briefing else None
     energy = state.energy
-    tier = state.ranking.player_tier
 
     if situation:
         if situation.fields_owned == 0:
@@ -252,8 +313,15 @@ def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
             # affordable_presets is typically sorted cheapest-first
             preset = situation.affordable_presets[0]
             items.append((f"Place Cells ({preset})", f"place_cells:{preset}"))
-        if energy >= _tier_up_cost(tier):
-            items.append((f"Evolve (~{_tier_up_cost(tier)} E)", "evolve"))
+        # Evolve: nur wenn echtes Field die Kriterien erf\u00fcllt (S157-Fix).
+        # Vor S157 nutzte das Men\u00fc `state.ranking.player_tier` (Novice/Bronze/...)
+        # und _tier_up_cost = 500 * 2^(tier-1) \u2014 falsche Tier-Variable und
+        # falsche Magnitude. User sah "Evolve (~500 E)", Server zog 1000 E ab.
+        evolvable = _find_evolvable_field(state, energy)
+        if evolvable is not None:
+            cost = EVOLUTION_ENERGY_COST[evolvable.entity_tier]
+            label = f"Evolve T{evolvable.entity_tier}->T{evolvable.entity_tier + 1} ({cost} E)"
+            items.append((label, "evolve"))
         if situation.active_catastrophe:
             items.append(("Buy Shield", "buy_shield"))
 
@@ -261,11 +329,6 @@ def build_menu(state: GameState | None, paused: bool) -> list[tuple[str, str]]:
     items.append(("Pause" if not paused else "Resume", "pause"))
     items.append(("Close Menu", "close"))
     return items
-
-
-def _tier_up_cost(current_tier: int) -> int:
-    """Rough rule of thumb for evolve cost (500 E at T1, doubles per tier)."""
-    return 500 * (2 ** max(0, current_tier - 1))
 
 
 # ----------------------------------------------------------------------------
@@ -421,17 +484,47 @@ def _render_journal(ps: PetState, now: float) -> list[str]:
 
 
 def _render_last_action(ps: PetState, now: float) -> list[str]:
-    d = ps.last_decision
-    if not d:
-        return ["", "No decisions yet."]
-    action = d.get("action", "?")
-    outcome = d.get("outcome", "?")
-    reasoning = d.get("reasoning", "")
-    lines = [
-        f"Action:  {action[:12]}",
-        f"Result:  {outcome[:12]}",
-    ]
-    return lines + _wrap(reasoning, width=21, max_lines=3)
+    """Show last user-clicked action AND last LLM-decision (S157 M2).
+
+    Pre-S157 zeigte dieser Screen nur LLM-Decisions aus /decisions. Bei
+    agent_mode=api (typisch fürs Pet) gibt es keine LLM-Decisions → Screen
+    war leer trotz aktiver User-Klicks. Comet-hand sah 2× 1000 E verschwinden
+    ohne irgendeinen Pet-Feedback.
+
+    Layout (max 5 Body-Zeilen auf 128x64 OLED):
+        You ok evolve         (User-Action mit Status-Marker)
+            -1000E free       (Detail aus _summarize_user_action)
+        ---
+        LLM: action outcome   (LLM-Decision falls vorhanden)
+        reasoning lines...
+    """
+    user = ps.last_user_action
+    decision = ps.last_decision
+
+    if not user and not decision:
+        return ["", "No actions yet."]
+
+    lines: list[str] = []
+    if user:
+        marker = {"ok": "OK", "fail": "!!", "skipped": ".."}.get(user.get("status", ""), "??")
+        lines.append(f"You {marker} {user.get('action', '?')[:12]}")
+        detail = user.get("detail") or ""
+        if detail:
+            lines.append(f"    {detail[:17]}")
+    if decision:
+        if user:
+            lines.append("---")
+            action = decision.get("action", "?")
+            outcome = decision.get("outcome", "?")
+            lines.append(f"LLM:{action[:7]} {outcome[:7]}")
+        else:
+            action = decision.get("action", "?")
+            outcome = decision.get("outcome", "?")
+            reasoning = decision.get("reasoning", "")
+            lines.append(f"Action:  {action[:12]}")
+            lines.append(f"Result:  {outcome[:12]}")
+            lines.extend(_wrap(reasoning, width=21, max_lines=2))
+    return lines[:5]
 
 
 def _render_rules(ps: PetState, now: float) -> list[str]:
@@ -865,29 +958,92 @@ async def _handle_longpress(ps: PetState, agent: CosmergonAgent) -> None:
     ps.paused = not ps.paused
 
 
+def _summarize_user_action(label: str, result: Any | None, now: float) -> dict:
+    """Build a Pet-display summary of an executed user action (S157 M2).
+
+    Pre-S157 schluckte _execute_action Erfolge stillschweigend, Pet zeigte nur
+    1 s Face-Mood-Wechsel. Bei Comet-hand verschwanden 2× 1000 E ohne Feedback.
+
+    Schema: {"action": str, "status": "ok"|"fail"|"skipped", "detail": str, "ts": float}
+    """
+    rec: dict = {"action": label, "ts": now}
+    if result is None:
+        rec["status"] = "skipped"
+        rec["detail"] = ""
+        return rec
+    if getattr(result, "success", False):
+        rec["status"] = "ok"
+        data = getattr(result, "data", None) or {}
+        # Häufige Felder: evolve, place_cells, create_field
+        if "energy_cost" in data:
+            ec = data.get("energy_cost", 0)
+            free = data.get("free_re_evolution", False)
+            rec["detail"] = f"-{int(ec)}E" + (" free" if free else "")
+        elif "new_tier" in data:
+            rec["detail"] = f"->T{data['new_tier']}"
+        else:
+            rec["detail"] = "ok"
+    else:
+        rec["status"] = "fail"
+        msg = getattr(result, "error_message", "") or "?"
+        rec["detail"] = msg[:18]
+    return rec
+
+
 async def _execute_action(action_key: str, ps: PetState, agent: CosmergonAgent, now: float) -> None:
-    """Execute a menu action. Errors are silently swallowed (ActionResult in the journal)."""
+    """Execute a menu action. Outcome wird auf ps.last_user_action geschrieben (S157 M2)."""
     state = ps.game_state
+    label = action_key.split(":", 1)[0]
+    result: Any | None = None
     try:
         if action_key == "create_field" and state and state.universe_cubes:
             cube_id = state.universe_cubes[0].id
-            await agent.act("create_field", cube_id=cube_id)
+            result = await agent.act("create_field", cube_id=cube_id)
         elif action_key.startswith("place_cells:") and state and state.fields:
             preset = action_key.split(":", 1)[1]
             empty_field = next((f for f in state.fields if f.active_cell_count == 0), None)
             if empty_field:
-                await agent.act("place_cells", field_id=empty_field.id, preset=preset)
+                result = await agent.act("place_cells", field_id=empty_field.id, preset=preset)
         elif action_key == "evolve" and state and state.fields:
-            await agent.act("evolve", field_id=state.fields[0].id)
+            # S157: Evolve auf das tatsächlich-evolvable Field, nicht blind auf
+            # state.fields[0]. Pre-S157 wäre der Server-Call oft mit 400 not_mature
+            # oder pattern_type_mismatch zurückgekommen, wenn das erste Field
+            # nicht passte aber ein anderes Field schon.
+            target = _find_evolvable_field(state, state.energy)
+            if target is not None:
+                result = await agent.act("evolve", field_id=target.id)
         elif action_key == "buy_shield" and state and state.fields:
-            await agent.act("buy_shield", field_id=state.fields[0].id)
+            result = await agent.act("buy_shield", field_id=state.fields[0].id)
         elif action_key == "pause":
             ps.paused = not ps.paused
+            ps.last_user_action = {
+                "action": "pause",
+                "status": "ok",
+                "detail": "paused" if ps.paused else "resumed",
+                "ts": now,
+            }
+            ps.last_action_at = now
+            return
         elif action_key.startswith("compass:"):
             preset = action_key.split(":", 1)[1]
             await agent.set_compass(preset)
+            ps.last_user_action = {
+                "action": "compass",
+                "status": "ok",
+                "detail": preset,
+                "ts": now,
+            }
+            ps.last_action_at = now
+            return
+        ps.last_user_action = _summarize_user_action(label, result, now)
         ps.last_action_at = now
     except Exception as err:
+        ps.last_user_action = {
+            "action": label,
+            "status": "fail",
+            "detail": str(err)[:18],
+            "ts": now,
+        }
         ps.last_error = f"action: {err}"[:30]
         logger.exception("Action %s failed", action_key)
 

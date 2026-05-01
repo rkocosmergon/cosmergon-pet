@@ -6,6 +6,70 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-05-01
+
+### Fixed
+
+- **Evolve-Menü zeigte falsche Kosten und falschen Tier-Begriff.** Vor
+  diesem Fix nutzte das Menü `state.ranking.player_tier` (= Account-
+  Ranking Novice/Bronze/…) als Eingabe für die Kosten-Heuristik
+  `500 × 2^(tier-1)`. Beide Werte waren falsch:
+  1. Server-Cost wird per `field.entity_tier` (Conway-Pattern-Tier)
+     berechnet, nicht per Player-Ranking.
+  2. Server-Cost ist 1.000 / 5.000 / 25.000 / 100.000 E pro Tier-Up,
+     nicht 500 / 1.000 / 2.000 / …
+  Effekt: Der User sah "Evolve (~500 E)", der Server zog 1.000 E ab.
+  Bei Tier-Up auf T3 sah man 1.000 E, real wurden 5.000 E abgezogen.
+- **Evolve-Aktion ging blind auf `state.fields[0]`.** Wenn das erste
+  Field nicht evolve-fähig war (Reife zu niedrig, falscher Pattern-Typ,
+  bereits T5), kam der Server-Call mit 400 zurück statt das richtige
+  Field zu treffen. Jetzt prüft `_find_evolvable_field` alle Felder
+  gegen die vier Server-Kriterien (entity_tier 1-4, reife ≥ Threshold,
+  entity_type matched, energy ≥ cost) und wählt das erste passende.
+
+### Added
+
+- **Screen 7 (Last Action) zeigt User-Klicks UND LLM-Decisions parallel.**
+  Vor diesem Release zeigte der Screen nur LLM-Decisions aus
+  `/decisions`. Bei agent_mode=api (Pet-Default) gibt es keine
+  LLM-Decisions → Screen war "No decisions yet." trotz aktiver
+  Encoder-Klicks. Jetzt:
+  ```
+  You OK evolve
+      -1000E free
+  ---
+  LLM:place_c ok
+  ```
+  Status-Marker: `OK` (Server 200), `!!` (Server-Fehler oder Exception),
+  `..` (Aktion übersprungen, z.B. kein evolve-fähiges Field gefunden).
+  Detail zeigt Energy-Cost + free-re-evolution-Marker, oder Tier-Up,
+  oder Server-Fehlermeldung (max 18 Zeichen).
+- Server-Cost-Konstanten (`EVOLUTION_ENERGY_COST`, `REIFE_THRESHOLDS`,
+  `TIER_REQUIRED_TYPE`) als Mirror in `face.py` mit Source-Code-Kommentar
+  zur Server-Tabelle (`backend/app/core/entity_tiers.py`). Müssen bei
+  Server-Änderungen synchron gepflegt werden.
+
+### Implementation
+
+- `_find_evolvable_field(state, energy)` neue pure Helper-Funktion,
+  ersetzt `_tier_up_cost` (gelöscht).
+- `_summarize_user_action(label, result, now)` baut Pet-Display-
+  Summary aus `ActionResult.success` + `data` + `error_message`.
+- `PetState.last_user_action: dict | None` neuer Slot mit Schema
+  `{action, status, detail, ts}`.
+- `_render_last_action` zeigt User-Action + LLM-Decision parallel
+  oder fallback "No actions yet." wenn beide leer.
+
+### Background
+
+S157 Forensik (Comet-hand-Field auf Prod): zwei Encoder-Klicks
+verbrauchten je 1000 E ohne sichtbares Pet-Feedback, weil der
+Engine-Tick das Field nach jedem Tier-Up zurück devolved hat. Der
+darunterliegende Backend-Bug (S111-Latent-Bug bei JSONB-Persistenz
+von `max_tier_paid`) wurde im Backend separat gefixt. Diese Pet-
+Release behebt die User-Experience-Seite — falsche Cost-Anzeige und
+fehlende Outcome-Sichtbarkeit.
+
 ## [0.1.9] — 2026-04-30
 
 ### Added
