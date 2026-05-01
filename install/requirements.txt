@@ -2,3 +2,6 @@ cosmergon-agent>=0.7.0
 luma.oled>=3.13.0
 rpi-lgpio>=0.6
 pillow>=10.0.0
+# httpx is a transitive dep via cosmergon-agent, listed explicitly because
+# cosmergon_pet.llm.ollama imports it directly for the LLM provider call.
+httpx>=0.27.0

@@ -1053,7 +1053,12 @@ async def _execute_action(action_key: str, ps: PetState, agent: CosmergonAgent, 
 # ----------------------------------------------------------------------------
 
 
-async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
+async def run_pet(
+    agent: CosmergonAgent,
+    simulate: bool,
+    llm_provider: Any | None = None,
+    llm_interval_s: float = 60.0,
+) -> None:
     # `async with agent` opens the SDK's HTTP client. Without this, every
     # `_request()` call raises "Agent not connected. Call run() or use async
     # with." — which surfaces on the Pet's display as `! state: Agent not co`
@@ -1082,6 +1087,32 @@ async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
         poll_decisions_task = asyncio.create_task(_poll_decisions(agent, ps, stop))
         draw_task = asyncio.create_task(_draw_loop(display, ps, stop))
 
+        # Optional LLM-driven decision loop. Runs alongside button-driven
+        # actions; user can still press the encoder for manual moves.
+        llm_task: asyncio.Task | None = None
+        if llm_provider is not None:
+            from .llm_decider import llm_decision_loop
+
+            def _on_llm_decision(action: str, params: dict, elapsed: float, success: bool) -> None:
+                ps.last_user_action = {
+                    "action": f"llm:{action}",
+                    "status": "ok" if success else "fail",
+                    "detail": f"{elapsed:.1f}s",
+                    "ts": time.monotonic(),
+                }
+                ps.last_action_at = time.monotonic()
+                ps.last_action_label = f"llm {action}"
+
+            llm_task = asyncio.create_task(
+                llm_decision_loop(
+                    agent,
+                    llm_provider,
+                    interval_s=llm_interval_s,
+                    stop=stop,
+                    on_decision=_on_llm_decision,
+                )
+            )
+
         try:
             while not stop.is_set():
                 try:
@@ -1091,7 +1122,10 @@ async def run_pet(agent: CosmergonAgent, simulate: bool) -> None:
                 await handle_event(event, ps, agent, time.monotonic())
         finally:
             stop.set()
-            for task in (poll_state_task, poll_events_task, poll_decisions_task, draw_task):
+            tasks = [poll_state_task, poll_events_task, poll_decisions_task, draw_task]
+            if llm_task is not None:
+                tasks.append(llm_task)
+            for task in tasks:
                 task.cancel()
                 try:
                     await task
@@ -1190,6 +1224,23 @@ def main() -> None:
         help="Run without RPi hardware: console display, arrow keys + Enter/Space.",
     )
     parser.add_argument("--log-level", default="WARNING", help="DEBUG/INFO/WARNING/ERROR")
+    parser.add_argument(
+        "--with-llm",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "Enable autonomous LLM-driven decisions. Provider name from "
+            "cosmergon_pet.llm.available_providers() (today: 'ollama'). "
+            "Configure via env vars, e.g. PET_LLM_OLLAMA_URL=http://mac-mini.local:11434 "
+            "and PET_LLM_OLLAMA_MODEL=llama3.2:3b."
+        ),
+    )
+    parser.add_argument(
+        "--llm-interval-s",
+        type=float,
+        default=60.0,
+        help="Seconds between LLM decisions (default: 60, matches Cosmergon tick).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -1201,8 +1252,26 @@ def main() -> None:
     base_url = os.environ.get("COSMERGON_BASE_URL", "https://cosmergon.com")
     agent = CosmergonAgent(api_key=api_key, base_url=base_url)
 
+    llm_provider = None
+    if args.with_llm is not None:
+        from .llm import build_provider
+
+        llm_provider = build_provider(args.with_llm)
+        logging.getLogger(__name__).info(
+            "LLM enabled: %s (interval %.1fs)",
+            llm_provider.model_string,
+            args.llm_interval_s,
+        )
+
     try:
-        asyncio.run(run_pet(agent, simulate=args.simulate))
+        asyncio.run(
+            run_pet(
+                agent,
+                simulate=args.simulate,
+                llm_provider=llm_provider,
+                llm_interval_s=args.llm_interval_s,
+            )
+        )
     except KeyboardInterrupt:
         pass
 

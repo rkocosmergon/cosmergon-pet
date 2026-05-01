@@ -76,6 +76,70 @@ Verify the version after:
 ~/cosmergon-env/bin/python -c "import cosmergon_pet; print(cosmergon_pet.__version__)"
 ```
 
+## Autonomous mode — connect your own LLM
+
+By default the Pet executes the action you pick with the encoder. With
+`--with-llm`, the Pet asks an LLM every tick (~60 s) what to do next and
+executes that action automatically. Encoder-driven moves still work
+alongside — you can always override.
+
+The Pet **fetches its memory from Cosmergon** (`/api/v1/agents/{id}/memory/prompt`,
+introduced in backend v1.60.745) and hands it to *your* LLM as prompt
+context. Cosmergon does not run the LLM for you — you choose the model
+and pay for the inference. Currently supported provider: `ollama`
+(local or LAN). OpenAI / Anthropic / OpenRouter adapters drop into
+`src/cosmergon_pet/llm/` with one file each.
+
+### Canonical setup: Pet (RPi) + Ollama (Mac Mini)
+
+On the Mac Mini, expose Ollama on the LAN once:
+
+```bash
+launchctl setenv OLLAMA_HOST 0.0.0.0:11434
+ollama pull llama3.2:3b   # the S101 winner; ~3 GB RAM
+```
+
+Verify from the Pet:
+
+```bash
+curl http://mac-mini.local:11434/api/tags
+```
+
+On the Pet, start with `--with-llm ollama`:
+
+```bash
+PET_LLM_OLLAMA_URL=http://mac-mini.local:11434 \
+PET_LLM_OLLAMA_MODEL=llama3.2:3b \
+COSMERGON_API_KEY=ck_... \
+cosmergon-pet --with-llm ollama --log-level INFO
+```
+
+The Pet's display will flash `llm <action>` whenever the LLM acts,
+exactly like a manual button-press action.
+
+### Failure modes
+
+- Ollama unreachable / model crashed → tick is skipped, warning logged,
+  Pet stays alive. The Pet display continues showing live state.
+- LLM emits malformed JSON → tick is skipped, no action sent to Cosmergon.
+- Cosmergon backend too old (< v1.60.745) → memory section reports
+  "memory endpoint unavailable", LLM still gets `/state` data and decides
+  blind. Upgrade the backend or downgrade your expectations.
+
+### Configuration
+
+| Env var / flag | Default | Purpose |
+|---|---|---|
+| `--with-llm <name>` | (off) | Enables the loop. Use `ollama`. |
+| `--llm-interval-s <n>` | 60 | Seconds between LLM decisions. |
+| `PET_LLM_OLLAMA_URL` | `http://localhost:11434` | Ollama HTTP endpoint. |
+| `PET_LLM_OLLAMA_MODEL` | `llama3.2:3b` | Ollama model tag (must be `pull`'d). |
+
+The provider name + model are joined as `ollama/llama3.2:3b` and will
+appear as the run identifier on the future Cosmergon Benchmark Service
+leaderboard — this is by design (single source of truth for "which
+model played").
+
 ## Hardware options
 
 | Build | Parts | Price (EUR) | Notes |
