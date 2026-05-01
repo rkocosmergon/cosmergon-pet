@@ -37,6 +37,7 @@ ALLOWED_PATTERNS=(
     "\.ruff\.toml"
     "\.pre-commit-config\.yaml"
     "src/cosmergon_pet/[A-Za-z0-9_]+\.py"
+    "src/cosmergon_pet/llm/[A-Za-z0-9_]+\.py"
     "scripts/[A-Za-z0-9_.-]+\.(sh|py)"
     "install/[A-Za-z0-9_.-]+\.(txt|sh)"
     "install/systemd/[A-Za-z0-9_.-]+\.service"
