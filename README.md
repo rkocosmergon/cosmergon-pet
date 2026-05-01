@@ -83,6 +83,9 @@ By default the Pet executes the action you pick with the encoder. With
 executes that action automatically. Encoder-driven moves still work
 alongside — you can always override.
 
+**Full guide (architecture, troubleshooting, adding new providers):**
+[`docs/autonomous-llm-mode.md`](docs/autonomous-llm-mode.md).
+
 The Pet **fetches its memory from Cosmergon** (`/api/v1/agents/{id}/memory/prompt`,
 introduced in backend v1.60.745) and hands it to *your* LLM as prompt
 context. Cosmergon does not run the LLM for you — you choose the model
