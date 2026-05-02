@@ -1,0 +1,34 @@
+# pre-commit hooks — local code quality gate
+#
+# Setup (once per clone):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Manual run on all files:
+#   pre-commit run --all-files
+#
+# Mirrors the GitHub-Actions Python-lint workflow (.github/workflows/python-lint.yml)
+# so format-drift is caught BEFORE push, not on CI. S158 (cosmergon backend repo)
+# identified that three S157 commits passed CI lint-check but failed format-check
+# — pre-commit hooks would have caught that locally.
+
+repos:
+  # Ruff: Linting + Formatting (mirrors the CI workflow)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^(src|scripts)/
+      - id: ruff-format
+        files: ^(src|scripts)/
+
+  # Basic hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=500]

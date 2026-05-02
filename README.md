@@ -182,6 +182,17 @@ Pull requests, hardware variants, translations and troubleshooting
 entries are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for
 guidelines, code style and the PR checklist.
 
+For local development, install the pre-commit hook to catch lint and
+format issues before they hit CI:
+
+```bash
+pip install pre-commit
+pre-commit install   # one-time per clone
+```
+
+The hook mirrors the GitHub-Actions `python-lint` workflow (ruff check
++ ruff format), so a green local commit means a green CI run.
+
 If you found a security issue, please read [`SECURITY.md`](SECURITY.md)
 — do not open a public issue.
 
