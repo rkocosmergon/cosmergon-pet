@@ -49,13 +49,15 @@ DEFAULT_INTERVAL_S = 60.0
 """Default seconds between LLM decisions. Matches the Cosmergon tick (60 s)."""
 
 
-VALID_ACTIONS: frozenset[str] = frozenset({
-    "place_cells",
-    "evolve",
-    "create_field",
-    "transfer_energy",
-    "wait",
-})
+VALID_ACTIONS: frozenset[str] = frozenset(
+    {
+        "place_cells",
+        "evolve",
+        "create_field",
+        "transfer_energy",
+        "wait",
+    }
+)
 """Client-side allowlist of actions the LLM may emit.
 
 Defense-in-depth on top of the backend's per-action validation:
@@ -68,10 +70,12 @@ Keep in sync with the SYSTEM_PROMPT below.
 
 # Sensitive params we never log verbatim — UUIDs of other players,
 # transfer amounts. The action name + param keys are still logged.
-_SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset({
-    "to_player_id",
-    "amount",
-})
+_SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
+    {
+        "to_player_id",
+        "amount",
+    }
+)
 
 
 SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game of Life economy.
@@ -118,7 +122,9 @@ async def llm_decision_loop(
     stop = stop or asyncio.Event()
     logger.info(
         "llm_decision_loop started provider=%s model=%s interval=%.1fs",
-        provider.name, provider.model_string, interval_s,
+        provider.name,
+        provider.model_string,
+        interval_s,
     )
     while not stop.is_set():
         try:
@@ -161,7 +167,8 @@ async def _one_decision(
     if action not in VALID_ACTIONS:
         logger.warning(
             "llm emitted disallowed action %r — dropped (allowed: %s)",
-            action, sorted(VALID_ACTIONS),
+            action,
+            sorted(VALID_ACTIONS),
         )
         if on_decision is not None:
             on_decision("(disallowed)", {}, elapsed, False)
@@ -182,7 +189,10 @@ async def _one_decision(
 
     logger.info(
         "llm action=%s params=%s success=%s decided_in=%.1fs",
-        action, _redact_params(params), success, elapsed,
+        action,
+        _redact_params(params),
+        success,
+        elapsed,
     )
     if on_decision is not None:
         on_decision(action, params, elapsed, success)
@@ -198,10 +208,7 @@ def _redact_params(params: dict[str, Any]) -> dict[str, Any]:
     """
     if not params:
         return params
-    return {
-        k: ("<redacted>" if k in _SENSITIVE_PARAM_KEYS else v)
-        for k, v in params.items()
-    }
+    return {k: ("<redacted>" if k in _SENSITIVE_PARAM_KEYS else v) for k, v in params.items()}
 
 
 async def _safe_memory(agent: CosmergonAgent) -> str:

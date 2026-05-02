@@ -41,9 +41,9 @@ class OllamaProvider:
         model: str | None = None,
         timeout_s: float = 60.0,
     ) -> None:
-        self.url = (
-            url or os.environ.get("PET_LLM_OLLAMA_URL", "http://localhost:11434")
-        ).rstrip("/")
+        self.url = (url or os.environ.get("PET_LLM_OLLAMA_URL", "http://localhost:11434")).rstrip(
+            "/"
+        )
         self.model = model or os.environ.get("PET_LLM_OLLAMA_MODEL", "llama3.2:3b")
         self.timeout_s = timeout_s
 
