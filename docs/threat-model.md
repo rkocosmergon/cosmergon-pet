@@ -72,7 +72,7 @@ the actual code paths so a reviewer can verify them with `grep`.
 
 | Threat | Mitigation | Code anchor |
 |---|---|---|
-| LLM crafts a payload that causes the pet to call admin endpoints | The pet's token is not an admin token. Backend authorises per-token; admin endpoints require `X-Operator-Token` which the pet never holds. |  |
+| LLM crafts a payload that causes the pet to call admin endpoints | The pet's token is a player-scoped token, not an admin token. Backend authorises per-token; admin endpoints require a separate operator credential which the pet never holds. |  |
 | LLM crafts an action with a different `agent_id` than the pet's | The decider forwards actions only as the pet's own agent — `agent_id` is not part of the LLM payload, it is taken from the pet's local state | `src/cosmergon_pet/llm_decider.py` |
 
 ## Open items
