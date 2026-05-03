@@ -291,6 +291,58 @@ def test_redact_params_handles_empty() -> None:
     assert mod._redact_params({}) == {}
 
 
+def test_build_system_prompt_uses_persona_and_name() -> None:
+    """Persona-aware prompt mirrors the NPC pattern: name + persona-tone +
+    preferred action sequence are all in the system prompt. Without these,
+    qwen2.5:7b chose 100% wait while NPCs chose place_cells 67% of the time.
+    """
+    mod = _import_or_skip()
+    prompt = mod._build_system_prompt("scientist", "Comet-hand")
+    assert "Comet-hand" in prompt
+    assert "scientist-persona" in prompt
+    assert "methodical and curious" in prompt
+    assert "(1) place_cells" in prompt
+    assert "(4) wait" in prompt
+
+
+def test_build_system_prompt_unknown_persona_falls_back_to_scientist() -> None:
+    """Unknown / empty persona must not crash — defaults to scientist
+    so the Pet always has a guidance block."""
+    mod = _import_or_skip()
+    prompt_unknown = mod._build_system_prompt("hermit", "X")
+    assert "methodical and curious" in prompt_unknown  # scientist tone
+    prompt_empty = mod._build_system_prompt("", "")
+    assert "an autonomous agent" in prompt_empty
+    assert "scientist-persona" in prompt_empty
+
+
+def test_build_system_prompt_warrior_has_warrior_tone() -> None:
+    """Each persona has a distinct tone block. Sanity-check warrior is
+    not just a copy of scientist."""
+    mod = _import_or_skip()
+    sci = mod._build_system_prompt("scientist", "S")
+    war = mod._build_system_prompt("warrior", "W")
+    assert "methodical" in sci and "methodical" not in war
+    assert "aggressive" in war and "aggressive" not in sci
+
+
+def test_one_decision_passes_persona_aware_prompt_to_provider() -> None:
+    """The system prompt the provider sees must reflect the agent's persona,
+    not a generic one — this is what made NPCs act and the Pet wait.
+    """
+    mod = _import_or_skip()
+    state = _make_state(field_ids=[("field-A", 1)])
+    state.persona_type = "warrior"
+    state.agent_name = "Comet-hand"
+    agent = _make_agent(state=state)
+    provider = _make_provider({"action": "wait", "params": {}})
+    asyncio.run(mod._one_decision(agent, provider, None))
+    call_args = provider.decide.await_args
+    system_prompt_arg = call_args.args[0] if call_args.args else call_args.kwargs.get("system_prompt")
+    assert "Comet-hand" in system_prompt_arg
+    assert "warrior-persona" in system_prompt_arg
+
+
 if __name__ == "__main__":
     test_one_decision_executes_action()
     test_one_decision_wait_skips_act()

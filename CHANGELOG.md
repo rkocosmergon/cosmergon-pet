@@ -6,6 +6,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-05-03
+
+### Changed
+
+- **Persona-aware system prompt.** Live empirics after v0.1.16 (Schema-
+  Mode) showed Comet-hand chose `wait` 3/3 ticks while NPC llm-Agents
+  chose `place_cells` 67% (155/225) over the same window. Schema was
+  not the bottleneck — the Pet's system prompt was generic ("You are
+  an autonomous agent"), while NPCs receive a persona-tone block plus
+  a numbered preferred-action sequence ("(1) place_cells on lowest-cell
+  field, (2) evolve, …, (6) wait"). Without that lenkung qwen2.5:7b
+  rationally chose wait at 9988 E.
+- **`_build_system_prompt(persona_type, agent_name)`** new in
+  `llm_decider.py`: builds a persona-aware prompt mirroring the NPC
+  pattern (`backend/app/core/personas.py::build_system_prompt`).
+  Personas covered: scientist (default), warrior, diplomat, farmer.
+  Each gets a tone sentence + 4-step preferred action sequence
+  restricted to the Pet's `VALID_ACTIONS`.
+- **`_one_decision`** now reads `state.persona_type` + `state.agent_name`
+  (already carried by SDK `GameState` since 0.4.x) and passes the
+  persona-aware system prompt to the provider, instead of a static
+  module-level `SYSTEM_PROMPT`. Comet-hand (persona=scientist) now sees
+  "You are Comet-hand, a scientist-persona agent" + scientist sequence
+  + decision examples in the prompt header.
+- **Tests** four new in `test_llm_decider.py`: persona+name in prompt,
+  unknown-persona fallback to scientist, distinct tone per persona,
+  end-to-end provider-call sees the persona-aware prompt. Pre-existing
+  tests untouched (state mocks without persona_type still work via
+  `getattr` default).
+
+### Pre-registered prediction (verified after deploy)
+
+- ≥1 successful `place_cells` in the first 5 ticks on cobot.
+- wait-rate over 30 Ticks should drop from 100% (v0.1.16) to ≤50%.
+- If both fail: fall back to model-swap experiment (qwen2.5:7b →
+  llama3.2:3b, the NPC default — same chassis, smaller model that
+  follows instructions more literally).
+
 ## [0.1.16] — 2026-05-03
 
 ### Changed
