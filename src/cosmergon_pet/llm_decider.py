@@ -35,6 +35,7 @@ decisions pause.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
@@ -79,20 +80,20 @@ _SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
 
 
 SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game of Life economy.
-Each tick (~60 s) you choose ONE action from the list provided in the world section.
+Each tick (~60 s) you pick exactly ONE numbered action from the "Available actions" list
+and output the JSON snippet shown next to that line. Do not invent values.
 
 Output rules:
-  1. Output a single JSON object. No prose, no markdown, no comments.
-  2. The "action" field MUST be exactly one of the actions in "Available actions".
-  3. The "params" field MUST contain only the parameters shown for that action.
-  4. UUIDs MUST be copied verbatim from the lists provided. NEVER invent UUIDs.
-  5. If nothing useful to do, choose "wait".
+  1. Output a single JSON object. No prose, no markdown fences, no comments.
+  2. Copy the JSON snippet from the chosen line of the list verbatim — including
+     every UUID character. Do not abbreviate, do not paraphrase, do not put any
+     value inside angle-brackets.
+  3. The "action" field must be exactly one of the action names in the list.
+  4. The "params" object must match the params shown for that action.
 
-Strategy: keep your fields alive, grow Conway patterns to higher tiers,
-accumulate energy. Use prior memory to learn from past outcomes.
-
-Example output:
-  {"action": "place_cells", "params": {"field_id": "<id-from-list>", "preset": "block"}}
+Strategy: grow your Conway patterns, keep your fields alive, accumulate energy.
+Prefer an active option that improves your situation; choose "wait" only when
+no listed action would help.
 """
 
 _FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
@@ -250,12 +251,31 @@ async def _safe_memory(agent: CosmergonAgent) -> str:
         return "(memory fetch failed this tick)"
 
 
+def _make_choice(action: str, params: dict[str, Any], label: str) -> dict[str, Any]:
+    """Build a choice dict including a ready-to-copy JSON snippet.
+
+    The `json` field is the EXACT string the LLM should output for this
+    line — pre-serialized so the model only has to copy it. Every line
+    of the rendered prompt is paired with its own JSON, so there is
+    nothing to "fill in" and no template-placeholders for a 3B model
+    to literalize (S160 empirics: `<id-from-list>` was being copied
+    verbatim from a placeholder example).
+    """
+    return {
+        "action": action,
+        "params": params,
+        "label": label,
+        "json": json.dumps({"action": action, "params": params}, separators=(",", ":")),
+    }
+
+
 def _build_action_choices(state: Any) -> list[dict[str, Any]]:
     """Build the explicit list of available actions for *this* state.
 
-    Each entry: ``{"action": str, "params": dict, "label": str}``.
-    The ``label`` is the human-readable line shown to the LLM; the
-    ``(action, params)`` pair is what we accept back from the LLM.
+    Each entry: ``{"action": str, "params": dict, "label": str, "json": str}``.
+    `label` is the human-readable line; `json` is the exact JSON output
+    the LLM should emit for that line; `(action, params)` is what we
+    accept back via the validator.
 
     This is the single source of truth for both the rendered prompt
     and the post-decision validator — they cannot disagree about what
@@ -274,7 +294,7 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
     """
     choices: list[dict[str, Any]] = []
     if state is None:
-        choices.append({"action": "wait", "params": {}, "label": "wait"})
+        choices.append(_make_choice("wait", {}, "wait"))
         return choices
 
     fields = list(getattr(state, "fields", []) or [])
@@ -294,11 +314,11 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
         fid_str = str(fid)
         for preset in affordable:
             choices.append(
-                {
-                    "action": "place_cells",
-                    "params": {"field_id": fid_str, "preset": preset},
-                    "label": f"place_cells   field_id={fid_str}  preset={preset}",
-                }
+                _make_choice(
+                    "place_cells",
+                    {"field_id": fid_str, "preset": preset},
+                    f"place_cells   field_id={fid_str}  preset={preset}",
+                )
             )
 
     # evolve: one row per field that *could* level up (T1..T4)
@@ -308,11 +328,11 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
         if fid and isinstance(tier, int) and 1 <= tier < 5:
             fid_str = str(fid)
             choices.append(
-                {
-                    "action": "evolve",
-                    "params": {"field_id": fid_str},
-                    "label": f"evolve        field_id={fid_str}  (current tier={tier})",
-                }
+                _make_choice(
+                    "evolve",
+                    {"field_id": fid_str},
+                    f"evolve        field_id={fid_str}  (current tier={tier})",
+                )
             )
 
     # create_field: only for owned cubes (newcomers have none → not offered,
@@ -322,14 +342,14 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
         if cid:
             cid_str = str(cid)
             choices.append(
-                {
-                    "action": "create_field",
-                    "params": {"cube_id": cid_str},
-                    "label": f"create_field  cube_id={cid_str}",
-                }
+                _make_choice(
+                    "create_field",
+                    {"cube_id": cid_str},
+                    f"create_field  cube_id={cid_str}",
+                )
             )
 
-    choices.append({"action": "wait", "params": {}, "label": "wait"})
+    choices.append(_make_choice("wait", {}, "wait"))
     return choices
 
 
@@ -376,9 +396,11 @@ def _format_world(
         f"Fields you own: {len(fields)}",
         f"Cubes you own: {len(own_cubes)}",
         "",
-        "## Available actions (pick exactly one, copy IDs verbatim)",
+        "## Available actions",
+        "Pick exactly one line; output the JSON shown after the arrow verbatim.",
         "",
     ]
     for i, c in enumerate(choices, 1):
         parts.append(f"{i:>2}. {c['label']}")
+        parts.append(f"    → {c['json']}")
     return "\n".join(parts)
