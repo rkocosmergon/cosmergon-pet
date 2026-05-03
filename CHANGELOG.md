@@ -6,6 +6,49 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-05-03
+
+### Fixed
+
+- **SYSTEM_PROMPT-Beispiel triggerte Halluzinationen.** v0.1.11 hatte
+  ein JSON-Beispiel mit `"field_id": "<id-from-list>"` als Platzhalter.
+  Llama3.2:3b interpretierte die spitzen Klammern nicht als
+  „setze hier eine ID aus der Liste ein", sondern kopierte den
+  Platzhalter wörtlich. S160-Empirik zeigte zwei direkte Beweise:
+  - Tick 17:08:03: `field_id='<uuid_from_list>'` 1:1 vom Beispiel
+  - Tick 16:48:44: `field_id='<5f0e77c3-…>'` mit übernommenen Klammern
+  Beispiel-Block komplett entfernt; Output-Regeln verweisen jetzt
+  auf den per-Zeile vorbereiteten JSON-Snippet (siehe Added).
+- **Wait-Bias-Fix.** v0.1.11 sagte „If nothing useful to do, choose
+  wait" — eine zu offene Einladung. Nach 28 Ticks an Comet-hand:
+  25 wait, 3 off-list-Drop, 0 success. Reformuliert zu „Prefer an
+  active option that improves your situation; choose wait only when
+  no listed action would help."
+
+### Added
+
+- **JSON-Snippet pro Choice-Zeile.** `_build_action_choices` rendert
+  jetzt zusätzlich ein `json`-Feld pro Eintrag — die exakte
+  JSON-Repräsentation, die der LLM für diese Zeile ausgeben soll.
+  `_format_world` zeigt es direkt unter dem Label:
+  ```
+   1. place_cells   field_id=cb6e823b-…  preset=block
+      → {"action":"place_cells","params":{"field_id":"cb6e823b-…","preset":"block"}}
+  ```
+  3B-Modelle müssen damit nur noch eine Zeile literal kopieren — keine
+  UUID-Substitution, kein Format-Würfeln. SYSTEM_PROMPT-Regel 2 sagt
+  explizit „copy verbatim, including every UUID character, no
+  abbreviation, no angle-brackets".
+
+### Background
+
+S160 Iteration #2. Empirisch zeigte v0.1.11 nach 28 Ticks 0 Success
+und 25/28 wait. Smoking-Gun-Befund war ein wörtlich kopierter
+Platzhalter aus meinem eigenen JSON-Beispiel — Modell-Capability war
+also nicht der Hauptengpass, mein Prompt-Design war es. Pre-Registered
+v0.1.12: ≥ 50 % Non-wait-Decisions in 30 Ticks; 0 Drops mit
+`<…>`-Pattern; ≥ 1 Success.
+
 ## [0.1.11] — 2026-05-03
 
 ### Changed
