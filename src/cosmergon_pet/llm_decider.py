@@ -79,8 +79,89 @@ _SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
 )
 
 
-SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game of Life economy.
+_PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
+    "scientist": {
+        "tone": (
+            "You are methodical and curious. You treat each tick as an experiment: "
+            "grow your fields steadily, evolve them when they mature, document outcomes."
+        ),
+        "sequence": (
+            "(1) place_cells on the field with the FEWEST live cells — observe its growth\n"
+            "  (2) evolve any field whose evolve line is in the list — test the tier transition\n"
+            "  (3) create_field if a cube line is offered — start a new experiment\n"
+            "  (4) wait — ONLY if no line above is in the list this tick"
+        ),
+    },
+    "warrior": {
+        "tone": (
+            "You are aggressive and expansionist. You grow fast, claim ground, "
+            "and never let an opportunity to add cells pass."
+        ),
+        "sequence": (
+            "(1) place_cells on the field with the FEWEST live cells — close the gap\n"
+            "  (2) evolve a field if any evolve line is offered — each tier ~doubles output\n"
+            "  (3) create_field if a cube line is offered — claim more territory\n"
+            "  (4) wait — ONLY if no other action above is in the list"
+        ),
+    },
+    "diplomat": {
+        "tone": (
+            "You are patient and relationship-focused, but you still maintain your own "
+            "fields — a diplomat without resources has no leverage."
+        ),
+        "sequence": (
+            "(1) place_cells on the field with the FEWEST live cells — keep your base healthy\n"
+            "  (2) evolve a field if any evolve line is offered\n"
+            "  (3) create_field if a cube line is offered\n"
+            "  (4) wait — ONLY if no other action above is in the list"
+        ),
+    },
+    "farmer": {
+        "tone": (
+            "You are steady, patient, and incremental. You build slowly but reliably, "
+            "topping up fields tick by tick."
+        ),
+        "sequence": (
+            "(1) place_cells on the field with the FEWEST live cells — top it up\n"
+            "  (2) evolve a field if any evolve line is offered — harvest the upgrade\n"
+            "  (3) create_field if a cube line is offered — expand the farm\n"
+            "  (4) wait — ONLY if no other action above is in the list"
+        ),
+    },
+}
+_DEFAULT_PERSONA = "scientist"
+
+
+def _build_system_prompt(persona_type: str, agent_name: str) -> str:
+    """Persona-aware system prompt — analogous to NPC ``personas.build_system_prompt``.
+
+    The NPC path (``backend/app/core/personas.py``) gives every llm-Agent a
+    persona-tone block + a numbered preferred-action sequence. NPCs follow
+    that sequence reliably (S160 empirics: 67% place_cells, 20% wait over
+    225 decisions in 2h). The Pet had only a generic catalog and chose
+    100% wait.
+
+    This builder mirrors the NPC structure for the Pet's restricted action
+    vocabulary (``VALID_ACTIONS``). Persona is passed in from
+    ``state.persona_type``; unknown personas fall back to scientist.
+    """
+    guidance = _PERSONA_GUIDANCE.get(persona_type) or _PERSONA_GUIDANCE[_DEFAULT_PERSONA]
+    name = agent_name or "an autonomous agent"
+    persona_label = persona_type or _DEFAULT_PERSONA
+    return f"""You are {name}, a {persona_label}-persona agent in Cosmergon — a Conway's Game of Life economy.
 Every ~60 seconds you must take a turn. You decide what to do.
+
+Your personality:
+  {guidance["tone"]}
+
+Preferred action sequence (try in this order — pick the first that applies this tick):
+  {guidance["sequence"]}
+
+Why not wait:
+  Energy decays every tick. Doing nothing means losing energy slowly until
+  you die. A healthy {persona_label} is always growing somewhere. Wait is
+  the fallback for ticks where no growth move is on the list — not a
+  default.
 
 How to answer:
   Each numbered line in "Available actions" IS a complete JSON object.
@@ -88,23 +169,12 @@ How to answer:
   for character, including all UUIDs. Output ONLY that JSON, nothing else.
   No markdown fences. No comments. No newly-built objects.
 
-Strategy:
-  - Energy decays every tick. Doing nothing means losing energy slowly
-    until you die. Wait is rarely the right choice for a healthy agent.
-  - Conway patterns generate energy proportional to their live-cell count.
-    Adding cells (place_cells) is the cheapest way to grow income.
-  - When a field is mature, evolve it to the next tier — each tier roughly
-    doubles output. Required entity_type changes per tier (oscillator → T2,
-    spaceship → T3, gun → T4, breeder → T5).
-  - Choose wait only when the listed actions truly cannot help: every
-    place_cells is unaffordable AND no field is evolve-eligible.
-
 Decision examples:
-  Healthy state, energy high, field has 3 cells:
-    → pick a place_cells line with the cheapest preset (block or blinker).
-  Field is mature oscillator at T2 with high reife:
+  Energy is healthy and at least one place_cells line is offered:
+    → pick the place_cells line for the field with the FEWEST live cells.
+  An evolve line is offered for a mature field:
     → pick the evolve line.
-  Energy below 50 E and no affordable preset listed:
+  Only "wait" is in the list (no growth moves possible):
     → pick the wait line.
 """
 
@@ -174,10 +244,13 @@ async def _one_decision(
     choices = _build_action_choices(agent.state)
     world = _format_world(agent.state, choices)
     schema = _build_decision_schema(choices)
+    persona = getattr(agent.state, "persona_type", "") or ""
+    name = getattr(agent.state, "agent_name", "") or ""
+    system_prompt = _build_system_prompt(persona, name)
 
     t0 = time.monotonic()
     try:
-        decision = await provider.decide(SYSTEM_PROMPT, memory, world, schema=schema)
+        decision = await provider.decide(system_prompt, memory, world, schema=schema)
     except LLMProviderError as e:
         logger.warning("provider %s failed: %s", provider.name, e)
         if on_decision is not None:
