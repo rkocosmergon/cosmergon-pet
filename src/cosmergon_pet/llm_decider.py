@@ -79,21 +79,29 @@ _SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
 
 
 SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game of Life economy.
+Each tick (~60 s) you choose ONE action from the list provided in the world section.
 
-Each tick (~60 s) you choose ONE action. Output strict JSON, nothing else:
-
-  {"action": "<name>", "params": {...}}
-
-Valid actions (others will be rejected):
-  - place_cells   params: field_id (uuid string), preset (one of:
-                  block, blinker, glider, toad)
-  - evolve        params: field_id (uuid string)
-  - create_field  params: cube_id (uuid string)
-  - transfer_energy  params: to_player_id (uuid), amount (number)
-  - wait          params: {} — choose this when nothing useful to do
+Output rules:
+  1. Output a single JSON object. No prose, no markdown, no comments.
+  2. The "action" field MUST be exactly one of the actions in "Available actions".
+  3. The "params" field MUST contain only the parameters shown for that action.
+  4. UUIDs MUST be copied verbatim from the lists provided. NEVER invent UUIDs.
+  5. If nothing useful to do, choose "wait".
 
 Strategy: keep your fields alive, grow Conway patterns to higher tiers,
 accumulate energy. Use prior memory to learn from past outcomes.
+
+Example output:
+  {"action": "place_cells", "params": {"field_id": "<id-from-list>", "preset": "block"}}
+"""
+
+_FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
+"""Used only if the backend's `affordable_presets` list is empty / missing.
+
+Block (5 E) and Blinker (10 E) are the cheapest presets — safe defaults
+that any agent with > 10 E can afford. The backend usually fills
+`world_briefing.agent_situation.affordable_presets` itself; this fallback
+is just defense for older backends or unexpected schema gaps.
 """
 
 
@@ -146,7 +154,11 @@ async def _one_decision(
 ) -> None:
     """Single decision round. Logged but does not raise."""
     memory = await _safe_memory(agent)
-    world = _format_world(agent.state)
+    # Build the choice list once — used both to render the prompt and to
+    # validate the LLM's response. Single source of truth: prompt and
+    # validator can never disagree about what's actually offered.
+    choices = _build_action_choices(agent.state)
+    world = _format_world(agent.state, choices)
 
     t0 = time.monotonic()
     try:
@@ -159,11 +171,10 @@ async def _one_decision(
 
     elapsed = time.monotonic() - t0
     action = decision["action"]
-    params = decision["params"]
+    params = decision["params"] or {}
 
-    # Defense-in-depth: drop actions outside the allowlist before they
-    # touch the Cosmergon API. The backend re-validates per-action,
-    # so this is a second layer (S157 security panel finding K1).
+    # Defense-in-depth layer 1 (S157 K1): drop actions outside the static
+    # allowlist before they touch the Cosmergon API.
     if action not in VALID_ACTIONS:
         logger.warning(
             "llm emitted disallowed action %r — dropped (allowed: %s)",
@@ -172,6 +183,22 @@ async def _one_decision(
         )
         if on_decision is not None:
             on_decision("(disallowed)", {}, elapsed, False)
+        return
+
+    # Defense-in-depth layer 2 (S160): drop actions whose parameters
+    # were not in the offered choice list. This is the structural fix
+    # against UUID hallucination — small models will invent UUIDs even
+    # when told not to. Filtering them locally never lets them reach
+    # the backend (saves 404/422 noise + lets `wait`-fallback take over
+    # next tick).
+    if not _is_action_in_choices(action, params, choices):
+        logger.warning(
+            "llm action=%s params=%s not in offered choices — dropped (off-list)",
+            action,
+            _redact_params(params),
+        )
+        if on_decision is not None:
+            on_decision("(off_list)", {}, elapsed, False)
         return
 
     if action == "wait":
@@ -223,24 +250,135 @@ async def _safe_memory(agent: CosmergonAgent) -> str:
         return "(memory fetch failed this tick)"
 
 
-def _format_world(state: Any) -> str:
-    """Compact world-summary for the LLM prompt.
+def _build_action_choices(state: Any) -> list[dict[str, Any]]:
+    """Build the explicit list of available actions for *this* state.
 
-    Kept short: smaller models (3B class) lose the structure when fed
-    too much context.
+    Each entry: ``{"action": str, "params": dict, "label": str}``.
+    The ``label`` is the human-readable line shown to the LLM; the
+    ``(action, params)`` pair is what we accept back from the LLM.
+
+    This is the single source of truth for both the rendered prompt
+    and the post-decision validator — they cannot disagree about what
+    is actually offered.
+
+    Coverage today:
+      - place_cells × each owned field × each affordable preset
+      - evolve × each owned field with entity_tier in 1..4 (T5 is max)
+      - create_field × each owned cube (none for newcomers; structurally
+        excluded so the LLM cannot hallucinate cube_ids)
+      - wait (always)
+
+    transfer_energy is intentionally not offered: a Free-Tier newcomer
+    has no realistic recipient list in scope, and offering it without
+    candidate counterparts only invites hallucinated player IDs.
+    """
+    choices: list[dict[str, Any]] = []
+    if state is None:
+        choices.append({"action": "wait", "params": {}, "label": "wait"})
+        return choices
+
+    fields = list(getattr(state, "fields", []) or [])
+    own_cubes = list(getattr(state, "cubes", []) or [])
+
+    wb = getattr(state, "world_briefing", None)
+    sit = getattr(wb, "situation", None) if wb is not None else None
+    affordable = list(getattr(sit, "affordable_presets", ()) or ())
+    if not affordable:
+        affordable = list(_FALLBACK_AFFORDABLE_PRESETS)
+
+    # place_cells: one row per (field, affordable preset)
+    for f in fields:
+        fid = getattr(f, "id", None)
+        if not fid:
+            continue
+        fid_str = str(fid)
+        for preset in affordable:
+            choices.append(
+                {
+                    "action": "place_cells",
+                    "params": {"field_id": fid_str, "preset": preset},
+                    "label": f"place_cells   field_id={fid_str}  preset={preset}",
+                }
+            )
+
+    # evolve: one row per field that *could* level up (T1..T4)
+    for f in fields:
+        fid = getattr(f, "id", None)
+        tier = getattr(f, "entity_tier", None)
+        if fid and isinstance(tier, int) and 1 <= tier < 5:
+            fid_str = str(fid)
+            choices.append(
+                {
+                    "action": "evolve",
+                    "params": {"field_id": fid_str},
+                    "label": f"evolve        field_id={fid_str}  (current tier={tier})",
+                }
+            )
+
+    # create_field: only for owned cubes (newcomers have none → not offered,
+    # which prevents the cube_id hallucination loop seen in S160 empirics).
+    for c in own_cubes:
+        cid = getattr(c, "id", None)
+        if cid:
+            cid_str = str(cid)
+            choices.append(
+                {
+                    "action": "create_field",
+                    "params": {"cube_id": cid_str},
+                    "label": f"create_field  cube_id={cid_str}",
+                }
+            )
+
+    choices.append({"action": "wait", "params": {}, "label": "wait"})
+    return choices
+
+
+def _is_action_in_choices(
+    action: str,
+    params: dict[str, Any],
+    choices: list[dict[str, Any]],
+) -> bool:
+    """True iff ``(action, params)`` exactly matches one offered choice.
+
+    Param-equality is strict dict-equality — any extra/wrong key fails.
+    For `wait`, params must be empty (matches the offered wait choice).
+    """
+    norm_params = params or {}
+    for c in choices:
+        if c["action"] == action and c["params"] == norm_params:
+            return True
+    return False
+
+
+def _format_world(
+    state: Any,
+    choices: list[dict[str, Any]] | None = None,
+) -> str:
+    """Render world summary + numbered list of available actions for the LLM.
+
+    Numbered, copy-from-list style is deliberate (S160): small models
+    (3B class) reliably copy from an explicit list but routinely
+    hallucinate UUIDs when asked to "use the field_id from above".
     """
     if state is None:
         return "(no state available — agent not yet connected)"
-    fields = list(getattr(state, "fields", []) or [])
-    energy = getattr(state, "energy_balance", "?")
-    if not fields:
-        return f"Energy: {energy}\nFields: (none)"
 
-    visible = fields[:10]
-    field_lines = "\n".join(
-        f"  - {getattr(f, 'id', '?')}: tier={getattr(f, 'entity_tier', '?')} "
-        f"cells={getattr(f, 'active_cell_count', '?')}"
-        for f in visible
-    )
-    extra = f"  ... and {len(fields) - len(visible)} more" if len(fields) > len(visible) else ""
-    return f"Energy: {energy}\nFields ({len(fields)}):\n{field_lines}{extra}"
+    if choices is None:
+        choices = _build_action_choices(state)
+
+    energy = getattr(state, "energy", "?")
+    fields = list(getattr(state, "fields", []) or [])
+    own_cubes = list(getattr(state, "cubes", []) or [])
+
+    parts: list[str] = [
+        "## Your situation",
+        f"Energy: {energy} E",
+        f"Fields you own: {len(fields)}",
+        f"Cubes you own: {len(own_cubes)}",
+        "",
+        "## Available actions (pick exactly one, copy IDs verbatim)",
+        "",
+    ]
+    for i, c in enumerate(choices, 1):
+        parts.append(f"{i:>2}. {c['label']}")
+    return "\n".join(parts)

@@ -98,8 +98,7 @@ def test_request_on_unopened_agent_raises_bug_signature() -> None:
 
     err = asyncio.run(_probe())
     assert BUG_SIGNATURE in err, (
-        f"Pre-flight RuntimeError no longer raised by _request on an "
-        f"unopened agent. Got: {err!r}"
+        f"Pre-flight RuntimeError no longer raised by _request on an unopened agent. Got: {err!r}"
     )
 
 

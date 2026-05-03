@@ -6,6 +6,55 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-05-03
+
+### Changed
+
+- **LLM-Prompt: kontextuelle Action-Liste statt statischer Aktionsbeschreibung.**
+  Der `_format_world`-Block enthält jetzt eine numerierte Liste *konkret
+  verfügbarer* Aktionen mit echten field_ids/cube_ids/Presets aus dem
+  `/state`-Response. `SYSTEM_PROMPT` sagt dem Modell explizit „NEVER
+  invent UUIDs — copy from list". Hintergrund: Empirie an Comet-hand
+  zeigte 0/9 Success-Rate über 22 Min mit Llama3.2:3b — das Modell
+  würfelte cube_ids und field_ids (z.B. `12345678-1234-1234-1234-...`),
+  weil der vorherige Prompt zwar die Aktionen *nannte* aber das Modell
+  nicht zwang, IDs aus dem Welt-Block zu kopieren. 3B-Class-Modelle
+  folgen einer expliziten kopierfähigen Liste deutlich zuverlässiger
+  als „benutze bitte die ID von oben".
+
+### Added
+
+- **`_build_action_choices(state)`** — Single Source of Truth für die
+  Liste verfügbarer Aktionen in dem aktuellen World-State. Berücksichtigt:
+  - `place_cells × {jedes Field} × {jedes affordable Preset}`
+  - `evolve × {jedes Field mit entity_tier 1..4}` (T5 ist Maximum)
+  - `create_field × {jeder eigene Cube}` — Newcomers ohne eigenen Cube
+    sehen das gar nicht erst
+  - `wait` (immer)
+  Wird von `_format_world` für die Prompt-Darstellung *und* von
+  `_one_decision` für die Post-Decision-Validierung benutzt — Prompt
+  und Validator können nicht mehr divergieren.
+- **`_is_action_in_choices(action, params, choices)`** — Defense-in-Depth
+  Layer 2: nach VALID_ACTIONS-Check (S157 K1) wird jetzt zusätzlich
+  geprüft, ob `(action, params)` exakt einem angebotenen Listen-Eintrag
+  entspricht. Halluzinierte UUIDs werden lokal gedropt und nie an die
+  Cosmergon-API geschickt — spart 404/422-Rauschen und gibt dem
+  `wait`-Fallback nächsten Tick einen sauberen Start.
+
+### Fixed
+
+- **Latenter Bug:** `_format_world` las `state.energy_balance` — das
+  SDK-Attribut heißt `state.energy`. Effekt: jeder LLM-Prompt hat
+  buchstäblich `Energy: ?` enthalten (silent via `getattr`-Default).
+  Beim Refactor mit-gefixt.
+
+### Background
+
+S160 Pet-LLM-Aktivierung an Comet-hand zeigte: das Modell halluziniert
+verlässlich UUIDs trotz expliziter Field-ID im Welt-Block. Strukturfix
+ist die kopierfähige Liste — keine semantische „use IDs from above"-
+Bitte. Pre-Registered: ≥ 60 % Success-Rate in 24 h Beobachtung.
+
 ## [0.1.10] — 2026-05-01
 
 ### Fixed
