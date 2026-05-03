@@ -6,6 +6,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-05-03
+
+### Changed
+
+- **World-Block zeigt jetzt Trigger-Info aus `world_briefing.situation`.**
+  Bislang sah der LLM nur Energy-Snapshot + Field-Count → keine Notwendigkeit
+  zur Aktion erkennbar. Empirie qwen2.5:7b und qwen3:14b: 100% wait über
+  20+ Ticks bei Comet-hand mit 9988 E (Decay zog tatsächlich Energy weg,
+  aber das Signal fehlte im Prompt). Neu im World-Block:
+  - `Energy: X E (trend: rising/stable/declining)` — Backend liefert das
+    via `agent_situation.energy_trend`, Pet verwendete es bisher nicht
+  - Per-Field-Detail: `T<tier> <entity_type>, <N> live cells` — lässt das
+    Modell Tier-Up-Eligibility (T2 oscillator → T3 needs spaceship)
+    selbst nachvollziehen
+  - `(N empty — losing income)` Hinweis bei leeren Fields
+  - `⚠ Active catastrophe`-Banner bei Bedrohung
+- **SYSTEM_PROMPT-Strategie geschärft**: explizit „Wait does NOT preserve
+  the status quo — a passive agent slowly loses energy and eventually
+  dies." Plus konkrete Wachstums-Mechanik („Tier-up roughly doubles
+  output", „larger live-cell count → more energy"). Wait-Default-Position
+  reframed: nur wenn nichts hilft, nicht „nichts dringendes".
+
+### Background
+
+S160 Pet-LLM-Iteration v3. v0.1.12 fixte Halluzinationen (kontextuelle
+Action-Liste + JSON-Snippet pro Zeile). Backend v1.60.850 fixte den
+Memory-Schreibpfad (isolated session — verifiziert in DB). Trotzdem:
+qwen2.5:7b wählte 100% wait — strukturell rational, weil im Prompt kein
+Signal stand das wait unattraktiv macht. v0.1.13 macht den Verlust durch
+Decay sichtbar und gibt dem LLM Trigger zum Handeln.
+
+Pre-registered für 30 Ticks an Comet-hand:
+  - ≥ 1 non-wait Decision in den ersten 10 Ticks
+  - ≥ 30 % non-wait Rate über 30 Ticks
+  - falls < 30 %: Hypothese „Prompt-Trigger-Lücke" widerlegt — dann
+    liegt es entweder am konservativen Modell-Default oder
+    an der Spielmechanik selbst (passive agents existieren by design).
+
 ## [0.1.12] — 2026-05-03
 
 ### Fixed

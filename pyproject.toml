@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cosmergon-pet"
-version = "0.1.12"
+version = "0.1.13"
 description = "Physical AI pet for Cosmergon agents — Raspberry Pi + OLED + rotary encoder"
 readme = "README.md"
 requires-python = ">=3.10"
