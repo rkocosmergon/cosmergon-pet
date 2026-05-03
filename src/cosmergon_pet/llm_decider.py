@@ -178,6 +178,7 @@ Decision examples:
     → pick the wait line.
 """
 
+
 _FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
 """Used only if the backend's `affordable_presets` list is empty / missing.
 
