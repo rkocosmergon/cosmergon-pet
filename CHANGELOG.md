@@ -6,6 +6,57 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-05-03
+
+### Changed
+
+- **SYSTEM_PROMPT adapts the NPC-prompt pattern.** Backend NPCs (which
+  share Ollama with the Pet) have been making real game decisions for
+  months while the Pet's autonomous mode chose 100% wait across v0.1.11
+  through v0.1.13 — same models, very different prompt structure.
+  Adopted from `backend/app/core/llm_agent.py::_build_user_prompt` and
+  `personas.py::build_system_prompt`:
+  - Imperative framing ("Every ~60 seconds you must take a turn. You
+    decide what to do") replaces the passive "Output a single JSON
+    object" header.
+  - Concrete decision examples (healthy / mature / low-energy) modeled
+    on NPC prompt's `_get_examples` block.
+  - Tier-up requirements now spelled out in-prompt (oscillator → T2,
+    spaceship → T3, gun → T4, breeder → T5).
+  - Wait-clause sharpened: "rarely the right choice for a healthy agent"
+    + concrete preconditions.
+- **`_format_world` ends with "What is your move?"** — explicit prompt
+  turn-taking, mirroring NPC's "Was tust du?". Pet was missing the
+  conversational close that asks the model to commit.
+- **Persona/identity prefix in world block** when state carries them:
+  "You are Comet-hand, a scientist-persona agent." The NPC prompt has
+  this at the top via `build_system_prompt(persona, agent_name, ...)`;
+  the Pet was anonymous to its own LLM.
+
+### Background
+
+S160 Pet-LLM-Iteration v4. The walkthrough through three previous
+iterations (v0.1.11 action-list, v0.1.12 JSON-snippet, v0.1.13 trigger-
+info) plus modell-Switches (qwen2.5:7b, qwen3:14b) and the verified
+backend memory fix all left the same symptom: 100% wait. The empirical
+counter-example: NPCs use the same Ollama instance with the same models
+and produce dozens of actions per hour. The structural difference is
+the prompt, not the model.
+
+This release ports the highest-value pieces of the NPC prompt pattern
+without bringing in the full NPC-only machinery (no learned-rules,
+no strategy-summary, no skills system — those need their own data
+sources that the Pet doesn't have today).
+
+Pre-registered for 30 ticks on Comet-hand:
+  - ≥ 1 non-wait decision in the first 10 ticks
+  - ≥ 30 % non-wait rate over 30 ticks
+  - if still 100 % wait: the Pet-LLM mode is structurally ill-suited to
+    this game state (a free-tier newcomer with one 3-cell field and
+    9988 E is genuinely a "wait is rational" position). Next step would
+    be either a richer game situation or accepting passive Pet behavior
+    by design until conditions change (catastrophe, market opportunity).
+
 ## [0.1.13] — 2026-05-03
 
 ### Changed
