@@ -83,10 +83,10 @@ SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game 
 Every ~60 seconds you must take a turn. You decide what to do.
 
 How to answer:
-  1. Output a single JSON object — no prose, no markdown fences, no comments.
-  2. Pick exactly ONE numbered line from the "Available actions" list.
-  3. Copy the JSON snippet shown after the arrow on that line VERBATIM
-     (every UUID character). Never invent or shorten any value.
+  Each numbered line in "Available actions" IS a complete JSON object.
+  Pick exactly ONE line and output that line's JSON verbatim — character
+  for character, including all UUIDs. Output ONLY that JSON, nothing else.
+  No markdown fences. No comments. No newly-built objects.
 
 Strategy:
   - Energy decays every tick. Doing nothing means losing energy slowly
@@ -101,11 +101,11 @@ Strategy:
 
 Decision examples:
   Healthy state, energy high, field has 3 cells:
-    → place_cells with the cheapest preset (block or blinker) to grow.
+    → pick a place_cells line with the cheapest preset (block or blinker).
   Field is mature oscillator at T2 with high reife:
-    → evolve to attempt T3 promotion.
+    → pick the evolve line.
   Energy below 50 E and no affordable preset listed:
-    → wait one tick and re-evaluate.
+    → pick the wait line.
 """
 
 _FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
@@ -451,13 +451,18 @@ def _format_world(
         [
             "",
             "## Available actions",
-            "Pick exactly one line; output the JSON shown after the arrow verbatim.",
+            "Each line below is a complete JSON object.",
+            "Output exactly ONE of these lines verbatim — nothing else.",
             "",
         ]
     )
     for i, c in enumerate(choices, 1):
-        parts.append(f"{i:>2}. {c['label']}")
-        parts.append(f"    → {c['json']}")
+        # Each line is a self-contained JSON object the LLM should copy 1:1.
+        # The trailing comment after `//` is for human-readability only; the
+        # LLM is told to copy the JSON portion. Most JSON parsers (and our
+        # downstream `json.loads`) reject `//`, so we strip the comment by
+        # putting it after the JSON terminator.
+        parts.append(f"{i:>2}. {c['json']}    // {c['label']}")
     parts.append("")
-    parts.append("What is your move? Reply with only the JSON snippet.")
+    parts.append("Your move? Output one of the JSON objects above, exactly.")
     return "\n".join(parts)
