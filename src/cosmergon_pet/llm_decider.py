@@ -91,9 +91,14 @@ Output rules:
   3. The "action" field must be exactly one of the action names in the list.
   4. The "params" object must match the params shown for that action.
 
-Strategy: grow your Conway patterns, keep your fields alive, accumulate energy.
-Prefer an active option that improves your situation; choose "wait" only when
-no listed action would help.
+Strategy:
+  - Energy decays each tick. Wait does NOT preserve the status quo —
+    a passive agent slowly loses energy and eventually dies.
+  - Growing your Conway patterns increases your energy income per tick.
+    A larger live-cell count generates more energy.
+  - Tier-up your fields when eligible: each tier roughly doubles output.
+  - Choose "wait" only when no listed action would actually help right now
+    (e.g. you cannot afford anything and your fields are already active).
 """
 
 _FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
@@ -390,16 +395,47 @@ def _format_world(
     fields = list(getattr(state, "fields", []) or [])
     own_cubes = list(getattr(state, "cubes", []) or [])
 
+    # Pull trigger-info from world_briefing.situation if available — these are
+    # the signals that tell the LLM whether wait is rational or whether action
+    # is needed (S160: without trigger-info qwen2.5:7b chose 100% wait at
+    # 9988 E because the static energy number looks comfortable).
+    wb = getattr(state, "world_briefing", None)
+    sit = getattr(wb, "situation", None) if wb is not None else None
+    energy_trend = getattr(sit, "energy_trend", "unknown") if sit is not None else "unknown"
+    fields_without_cells = getattr(sit, "fields_without_cells", 0) if sit is not None else 0
+    catastrophe = getattr(sit, "active_catastrophe", None) if sit is not None else None
+    catastrophe_warn = getattr(sit, "catastrophe_warning_ticks", None) if sit is not None else None
+
     parts: list[str] = [
         "## Your situation",
-        f"Energy: {energy} E",
-        f"Fields you own: {len(fields)}",
+        f"Energy: {energy} E (trend: {energy_trend})",
+        f"Fields you own: {len(fields)}"
+        + (f" ({fields_without_cells} empty — losing income)" if fields_without_cells else ""),
         f"Cubes you own: {len(own_cubes)}",
-        "",
-        "## Available actions",
-        "Pick exactly one line; output the JSON shown after the arrow verbatim.",
-        "",
     ]
+
+    # Per-field detail: tier + cells + entity_type — lets the LLM reason about
+    # tier-up eligibility (T2 oscillator → T3 needs spaceship pattern, etc.)
+    for f in fields[:5]:
+        fid = getattr(f, "id", "?")
+        tier = getattr(f, "entity_tier", None)
+        cells = getattr(f, "active_cell_count", 0)
+        etype = getattr(f, "entity_type", None) or "?"
+        fid_short = str(fid)[:8] + "..."
+        parts.append(f"  - {fid_short}: T{tier} {etype}, {cells} live cells")
+
+    if catastrophe:
+        warn = f", impact in {catastrophe_warn} ticks" if catastrophe_warn else ""
+        parts.append(f"⚠ Active catastrophe: {catastrophe}{warn}")
+
+    parts.extend(
+        [
+            "",
+            "## Available actions",
+            "Pick exactly one line; output the JSON shown after the arrow verbatim.",
+            "",
+        ]
+    )
     for i, c in enumerate(choices, 1):
         parts.append(f"{i:>2}. {c['label']}")
         parts.append(f"    → {c['json']}")
