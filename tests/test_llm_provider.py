@@ -30,6 +30,7 @@ def _import_or_skip() -> Any:
             sys.exit(0)
         pytest.skip("cosmergon_pet.llm not importable")
     import cosmergon_pet.llm as llm_module
+
     return llm_module
 
 
@@ -97,14 +98,19 @@ async def _aexecute(coro: Any) -> Any:
 def test_ollama_decide_happy_path() -> None:
     """Happy path: provider returns parsed action+params dict."""
     import asyncio
+
     llm = _import_or_skip()
 
-    fake_resp = _ollama_response({
-        "response": json.dumps({"action": "place_cells", "params": {"field_id": "abc", "preset": "block"}}),
-    })
+    fake_resp = _ollama_response(
+        {
+            "response": json.dumps(
+                {"action": "place_cells", "params": {"field_id": "abc", "preset": "block"}}
+            ),
+        }
+    )
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *_: Any) -> None:
@@ -123,12 +129,13 @@ def test_ollama_decide_happy_path() -> None:
 def test_ollama_decide_malformed_json_raises_provider_error() -> None:
     """Ollama returned non-JSON despite format=json — raise LLMProviderError."""
     import asyncio
+
     llm = _import_or_skip()
 
     fake_resp = _ollama_response({"response": "not really json {"})
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *_: Any) -> None:
@@ -150,12 +157,13 @@ def test_ollama_decide_malformed_json_raises_provider_error() -> None:
 def test_ollama_decide_missing_action_raises() -> None:
     """Backend returned JSON without 'action' field — provider error."""
     import asyncio
+
     llm = _import_or_skip()
 
     fake_resp = _ollama_response({"response": json.dumps({"params": {}})})
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *_: Any) -> None:

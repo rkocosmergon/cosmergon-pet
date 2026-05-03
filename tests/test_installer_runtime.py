@@ -125,6 +125,7 @@ def test_fifo_probe_succeeds_from_writable_cwd(tmp_path: Path) -> None:
 
 # --- Standalone runner ------------------------------------------------------
 
+
 def _main() -> int:
     import tempfile
 
