@@ -6,6 +6,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-05-03
+
+### Changed
+
+- **Ollama structured-output (JSON-Schema constraint).** All five
+  prompt iterations from v0.1.11 through v0.1.15 attempted to teach the
+  model "copy this line verbatim" via prompt wording alone — the model
+  always found a way to ignore it (hallucinated UUIDs, hallucinated
+  action names, empty params, etc.). Switched to Ollama's structured-
+  output mode (`format: <JSON-Schema>` instead of `format: "json"`,
+  available since Q1/2025): the schema enforces the action+params
+  combination at decoder level — wrong tokens simply cannot be sampled.
+- **`_build_decision_schema(choices)`** new in `llm_decider.py`: per
+  tick, builds a `oneOf` schema with one branch per offered choice,
+  every parameter pinned via `const` to the exact UUID/value from the
+  choice. The model is structurally forced into one of N exact JSON
+  outputs.
+- **`LLMProvider.decide(..., schema=None)`** protocol extended (back-
+  compatible default): providers that support structured output (Ollama
+  today; future OpenAI/Anthropic adapters) consume the schema; legacy
+  providers ignore it.
+- **`OllamaProvider.decide`** passes `format=<schema>` when supplied,
+  falls back to `format="json"` otherwise.
+
+### Background
+
+S160 v6 — the structurally correct fix. Five iterations of prompt
+engineering were a detour; the right tool was Ollama's structured-output
+since Q1/2025. With a `oneOf` schema constraining both action and every
+param value, the model cannot return `{"action":"place_cells","params":{}}`
+because that JSON shape simply isn't in the schema. The local
+`_is_action_in_choices` filter remains as defense-in-depth (in case a
+provider lacks schema support).
+
+Pre-registered: ≥ 1 successful POST /action in the first 3 ticks. If
+that fails, the bug is elsewhere (Ollama version, schema rejection,
+or model-server adapter).
+
 ## [0.1.15] — 2026-05-03
 
 ### Changed
