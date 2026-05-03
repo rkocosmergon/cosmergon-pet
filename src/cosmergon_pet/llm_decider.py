@@ -80,25 +80,32 @@ _SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
 
 
 SYSTEM_PROMPT = """You are an autonomous agent in Cosmergon — a Conway's Game of Life economy.
-Each tick (~60 s) you pick exactly ONE numbered action from the "Available actions" list
-and output the JSON snippet shown next to that line. Do not invent values.
+Every ~60 seconds you must take a turn. You decide what to do.
 
-Output rules:
-  1. Output a single JSON object. No prose, no markdown fences, no comments.
-  2. Copy the JSON snippet from the chosen line of the list verbatim — including
-     every UUID character. Do not abbreviate, do not paraphrase, do not put any
-     value inside angle-brackets.
-  3. The "action" field must be exactly one of the action names in the list.
-  4. The "params" object must match the params shown for that action.
+How to answer:
+  1. Output a single JSON object — no prose, no markdown fences, no comments.
+  2. Pick exactly ONE numbered line from the "Available actions" list.
+  3. Copy the JSON snippet shown after the arrow on that line VERBATIM
+     (every UUID character). Never invent or shorten any value.
 
 Strategy:
-  - Energy decays each tick. Wait does NOT preserve the status quo —
-    a passive agent slowly loses energy and eventually dies.
-  - Growing your Conway patterns increases your energy income per tick.
-    A larger live-cell count generates more energy.
-  - Tier-up your fields when eligible: each tier roughly doubles output.
-  - Choose "wait" only when no listed action would actually help right now
-    (e.g. you cannot afford anything and your fields are already active).
+  - Energy decays every tick. Doing nothing means losing energy slowly
+    until you die. Wait is rarely the right choice for a healthy agent.
+  - Conway patterns generate energy proportional to their live-cell count.
+    Adding cells (place_cells) is the cheapest way to grow income.
+  - When a field is mature, evolve it to the next tier — each tier roughly
+    doubles output. Required entity_type changes per tier (oscillator → T2,
+    spaceship → T3, gun → T4, breeder → T5).
+  - Choose wait only when the listed actions truly cannot help: every
+    place_cells is unaffordable AND no field is evolve-eligible.
+
+Decision examples:
+  Healthy state, energy high, field has 3 cells:
+    → place_cells with the cheapest preset (block or blinker) to grow.
+  Field is mature oscillator at T2 with high reife:
+    → evolve to attempt T3 promotion.
+  Energy below 50 E and no affordable preset listed:
+    → wait one tick and re-evaluate.
 """
 
 _FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
@@ -406,13 +413,25 @@ def _format_world(
     catastrophe = getattr(sit, "active_catastrophe", None) if sit is not None else None
     catastrophe_warn = getattr(sit, "catastrophe_warning_ticks", None) if sit is not None else None
 
-    parts: list[str] = [
-        "## Your situation",
-        f"Energy: {energy} E (trend: {energy_trend})",
-        f"Fields you own: {len(fields)}"
-        + (f" ({fields_without_cells} empty — losing income)" if fields_without_cells else ""),
-        f"Cubes you own: {len(own_cubes)}",
-    ]
+    persona = getattr(state, "persona_type", "") or ""
+    agent_name = getattr(state, "agent_name", "") or ""
+
+    parts: list[str] = []
+    if agent_name or persona:
+        identity = f"You are {agent_name}".strip()
+        if persona:
+            identity += f", a {persona}-persona agent"
+        parts.append(identity + ".")
+        parts.append("")
+    parts.extend(
+        [
+            "## Your situation",
+            f"Energy: {energy} E (trend: {energy_trend})",
+            f"Fields you own: {len(fields)}"
+            + (f" ({fields_without_cells} empty — losing income)" if fields_without_cells else ""),
+            f"Cubes you own: {len(own_cubes)}",
+        ]
+    )
 
     # Per-field detail: tier + cells + entity_type — lets the LLM reason about
     # tier-up eligibility (T2 oscillator → T3 needs spaceship pattern, etc.)
@@ -439,4 +458,6 @@ def _format_world(
     for i, c in enumerate(choices, 1):
         parts.append(f"{i:>2}. {c['label']}")
         parts.append(f"    → {c['json']}")
+    parts.append("")
+    parts.append("What is your move? Reply with only the JSON snippet.")
     return "\n".join(parts)
