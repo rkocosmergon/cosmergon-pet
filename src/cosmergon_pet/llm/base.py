@@ -44,6 +44,7 @@ class LLMProvider(Protocol):
         system_prompt: str,
         memory: str,
         world: str,
+        schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Ask the LLM for the next action.
 
@@ -53,6 +54,11 @@ class LLMProvider(Protocol):
                 (from ``agent.fetch_memory_prompt()``).
             world: Compact world-state summary
                 (energy, fields, neighbours).
+            schema: Optional JSON-Schema constraining the response.
+                When supplied, providers that support structured output
+                (Ollama since Q1/2025, OpenAI tool-use, Anthropic) MUST
+                pass it to the model so the response is forced to match.
+                When None, providers fall back to "any valid JSON".
 
         Returns:
             Dict with at least ``action`` (str) and ``params`` (dict).

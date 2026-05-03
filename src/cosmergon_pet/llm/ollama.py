@@ -56,13 +56,23 @@ class OllamaProvider:
         system_prompt: str,
         memory: str,
         world: str,
+        schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         prompt = self._compose_prompt(system_prompt, memory, world)
+        # Ollama structured-output (since Q1/2025): when `format` is a
+        # JSON-Schema object instead of the string "json", the decoder
+        # constrains generation to schema-conforming tokens. This is the
+        # difference between "valid JSON" (anything goes) and "exactly
+        # one of the allowed shapes" (each option fully specified).
+        # Without this, smaller models (qwen2.5:7b in S160 empirics)
+        # output `{"action":"place_cells","params":{}}` — valid JSON,
+        # invalid game move.
+        format_value: Any = schema if schema else "json"
         body = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "format": "json",
+            "format": format_value,
         }
         try:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
@@ -80,7 +90,7 @@ class OllamaProvider:
             parsed = json.loads(raw_response)
         except json.JSONDecodeError as e:
             raise LLMProviderError(
-                f"ollama response is not JSON despite format=json: {raw_response[:200]!r}"
+                f"ollama response is not JSON despite format constraint: {raw_response[:200]!r}"
             ) from e
 
         action = parsed.get("action")

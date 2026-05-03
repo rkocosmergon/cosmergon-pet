@@ -167,15 +167,17 @@ async def _one_decision(
 ) -> None:
     """Single decision round. Logged but does not raise."""
     memory = await _safe_memory(agent)
-    # Build the choice list once — used both to render the prompt and to
-    # validate the LLM's response. Single source of truth: prompt and
-    # validator can never disagree about what's actually offered.
+    # Build the choice list once — used both to render the prompt, to
+    # constrain the LLM via JSON-Schema, and to validate the response.
+    # Single source of truth: prompt + schema + validator can never
+    # disagree about what is actually offered.
     choices = _build_action_choices(agent.state)
     world = _format_world(agent.state, choices)
+    schema = _build_decision_schema(choices)
 
     t0 = time.monotonic()
     try:
-        decision = await provider.decide(SYSTEM_PROMPT, memory, world)
+        decision = await provider.decide(SYSTEM_PROMPT, memory, world, schema=schema)
     except LLMProviderError as e:
         logger.warning("provider %s failed: %s", provider.name, e)
         if on_decision is not None:
@@ -363,6 +365,51 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
 
     choices.append(_make_choice("wait", {}, "wait"))
     return choices
+
+
+def _build_decision_schema(choices: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a JSON-Schema that constrains the LLM output to one of the offered choices.
+
+    Each choice becomes one branch of a `oneOf` discriminator, with `action`
+    pinned via `const` and every parameter pinned to its exact value via
+    `const` again. The model is therefore forced — at decoder level — to
+    produce a JSON object that matches one of the lines we offered. There
+    is no way for the model to reply with `{"action":"place_cells","params":{}}`
+    or to invent a UUID; those simply aren't in the schema.
+
+    Requires Ollama ≥ Q1/2025 (structured-output release). Other providers
+    that accept JSON-Schema (OpenAI tool-use, Anthropic) get the same
+    schema. Providers that don't support schemas treat it as advisory.
+    """
+    if not choices:
+        return {}
+    return {
+        "type": "object",
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["action", "params"],
+                "properties": {
+                    "action": {"const": c["action"]},
+                    "params": _params_schema(c["params"]),
+                },
+            }
+            for c in choices
+        ],
+    }
+
+
+def _params_schema(params: dict[str, Any]) -> dict[str, Any]:
+    """Per-action params sub-schema: every key pinned via `const`."""
+    if not params:
+        return {"type": "object", "additionalProperties": False, "properties": {}}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": list(params.keys()),
+        "properties": {k: {"const": v} for k, v in params.items()},
+    }
 
 
 def _is_action_in_choices(
