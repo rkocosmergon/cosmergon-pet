@@ -6,6 +6,34 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.15] — 2026-05-03
+
+### Changed
+
+- **Each numbered line in the Available-Actions list IS the JSON.**
+  v0.1.14 used a `Label` line followed by `→ {json}` continuation.
+  qwen2.5:7b on Comet-hand parsed the structure as „pick action name
+  from label, build my own JSON" — output `{"action":"place_cells",
+  "params":{}}` (action name copied, params dropped). Filter dropped
+  3/3 attempts. New format puts the JSON object directly on each
+  numbered line followed by a `// human-readable comment`. Prompt now
+  explicitly says „output exactly one of these lines verbatim — nothing
+  else." Removes the option for the model to recompose JSON.
+- SYSTEM_PROMPT „How to answer" rewritten for the new format.
+
+### Background
+
+S160 v4 (NPC-pattern adoption) successfully broke the 100 % wait
+deadlock — qwen2.5:7b started picking `place_cells`. But it dropped the
+params, suggesting the two-line label/JSON format invited the model to
+"interpret" the action and recreate JSON. v5 collapses to one-line-per-
+choice with the JSON as the only thing the model needs to copy.
+
+Pre-registered for 30 ticks on Comet-hand:
+  - ≥ 1 successful POST /action (i.e. an action that passes the local
+    `_is_action_in_choices` filter and reaches the backend)
+  - ≥ 30 % non-wait rate
+
 ## [0.1.14] — 2026-05-03
 
 ### Changed
