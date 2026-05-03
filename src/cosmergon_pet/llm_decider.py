@@ -148,8 +148,8 @@ def _build_system_prompt(persona_type: str, agent_name: str) -> str:
     guidance = _PERSONA_GUIDANCE.get(persona_type) or _PERSONA_GUIDANCE[_DEFAULT_PERSONA]
     name = agent_name or "an autonomous agent"
     persona_label = persona_type or _DEFAULT_PERSONA
-    return f"""You are {name}, a {persona_label}-persona agent in Cosmergon — a Conway's Game of Life economy.
-Every ~60 seconds you must take a turn. You decide what to do.
+    return f"""You are {name}, a {persona_label}-persona agent in Cosmergon —
+a Conway's Game of Life economy. Every ~60 seconds you take a turn.
 
 Your personality:
   {guidance["tone"]}
