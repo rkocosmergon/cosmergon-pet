@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cosmergon-pet"
-version = "0.1.20"
+version = "0.1.21"
 description = "Physical AI pet for Cosmergon agents — Raspberry Pi + OLED + rotary encoder"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: System :: Hardware",
 ]
 dependencies = [
-    "cosmergon-agent>=0.7.0",
+    "cosmergon-agent>=0.10.0",
     "luma.oled>=3.13.0",
     "rpi-lgpio>=0.6",
     "pillow>=10.0.0",

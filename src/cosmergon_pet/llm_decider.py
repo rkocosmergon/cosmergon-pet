@@ -279,12 +279,75 @@ def _maybe_dump_prompt(
         logger.warning("prompt-dump failed", exc_info=True)
 
 
+async def _maybe_reflect(
+    agent: CosmergonAgent,
+    provider: LLMProvider,
+) -> None:
+    """If `state.reflection_due` is set, run one reflection round.
+
+    Logged but does not raise — reflection failures must never break
+    the decision loop. Calls `agent.fetch_reflection_signals` →
+    `provider.reflect` → `agent.post_reflection` and returns silently
+    when any step yields no result. The Pet retries next tick if the
+    backend still flags `reflection_due`.
+
+    Older backends (< v1.60.862) leave `reflection_due` at the SDK's
+    default `False`, so this is a safe no-op there.
+    """
+    state = agent.state
+    if state is None or not getattr(state, "reflection_due", False):
+        return
+    fetch = getattr(agent, "fetch_reflection_signals", None)
+    post = getattr(agent, "post_reflection", None)
+    if fetch is None or post is None:
+        return  # SDK too old (< v0.10.0) — endpoints not exposed
+    try:
+        signals = await fetch(horizon="short")
+    except Exception:
+        logger.warning("reflection: signals fetch failed", exc_info=True)
+        return
+    if not signals:
+        return
+    if not signals.get("top_5") and not signals.get("bottom_5"):
+        return  # nothing to reflect on yet
+    persona = getattr(state, "persona_type", "") or ""
+    name = getattr(state, "agent_name", "") or ""
+    try:
+        result = await provider.reflect(signals, persona, name)
+    except Exception:
+        logger.warning("reflection: provider.reflect raised", exc_info=True)
+        return
+    if not result:
+        return
+    try:
+        await post(
+            lessons=result["lessons"],
+            avoid=result["avoid"],
+            double_down=result["double_down"],
+            since_tick=int(signals.get("since_tick", 0)),
+            horizon=signals.get("horizon", "short"),
+            model_used=getattr(provider, "model_string", None),
+        )
+        logger.info(
+            "reflection: persisted (model=%s, decisions=%s)",
+            getattr(provider, "model_string", "?"),
+            signals.get("decisions_in_window", "?"),
+        )
+    except Exception:
+        logger.warning("reflection: post failed", exc_info=True)
+
+
 async def _one_decision(
     agent: CosmergonAgent,
     provider: LLMProvider,
     on_decision: callable | None,  # type: ignore[type-arg]
 ) -> None:
     """Single decision round. Logged but does not raise."""
+    # Reflection runs BEFORE the decision so the upcoming LLM call sees
+    # a memory-prompt that already includes the freshly-written
+    # self_reflection (importance=1.0 → renderer's "## Your Past Lessons"
+    # block picks it up). Order matters: reflect → fetch_memory → decide.
+    await _maybe_reflect(agent, provider)
     memory = await _safe_memory(agent)
     # Build the choice list once — used both to render the prompt, to
     # constrain the LLM via JSON-Schema, and to validate the response.
