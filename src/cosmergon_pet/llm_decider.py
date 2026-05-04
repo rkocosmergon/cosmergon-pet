@@ -386,7 +386,6 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
         return choices
 
     fields = list(getattr(state, "fields", []) or [])
-    own_cubes = list(getattr(state, "cubes", []) or [])
 
     wb = getattr(state, "world_briefing", None)
     sit = getattr(wb, "situation", None) if wb is not None else None
