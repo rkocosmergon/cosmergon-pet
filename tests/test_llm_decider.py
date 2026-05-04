@@ -198,9 +198,7 @@ def test_format_world_no_fields_only_wait() -> None:
 def test_format_world_no_create_field_when_universe_empty() -> None:
     """No cubes anywhere → create_field must NOT appear."""
     mod = _import_or_skip()
-    out = mod._format_world(
-        _make_state(field_ids=[("f1", 1)], cube_ids=[], universe_cube_ids=[])
-    )
+    out = mod._format_world(_make_state(field_ids=[("f1", 1)], cube_ids=[], universe_cube_ids=[]))
     assert "create_field" not in out
 
 
@@ -368,7 +366,9 @@ def test_one_decision_passes_persona_aware_prompt_to_provider() -> None:
     provider = _make_provider({"action": "wait", "params": {}})
     asyncio.run(mod._one_decision(agent, provider, None))
     call_args = provider.decide.await_args
-    system_prompt_arg = call_args.args[0] if call_args.args else call_args.kwargs.get("system_prompt")
+    system_prompt_arg = (
+        call_args.args[0] if call_args.args else call_args.kwargs.get("system_prompt")
+    )
     assert "Comet-hand" in system_prompt_arg
     assert "warrior-persona" in system_prompt_arg
 
