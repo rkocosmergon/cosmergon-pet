@@ -110,3 +110,123 @@ class OllamaProvider:
             f"# Current world\n{world}\n\n"
             f"# Your decision (JSON only)"
         )
+
+    async def reflect(
+        self,
+        signals: dict[str, Any],
+        persona: str,
+        agent_name: str,
+    ) -> dict[str, str] | None:
+        """Synthesize a self-reflection from collected decision signals.
+
+        Implements the LLMProvider.reflect contract: given top-5 best,
+        bottom-5 worst, and dominant action patterns, ask the model for
+        three structured strings (lessons / avoid / double_down). Schema-
+        constrained via Ollama's structured-output mode so the response
+        always matches the exact shape Cosmergon's POST /reflection
+        accepts.
+
+        Returns None on any LLM error, schema violation, or empty signals
+        — never raises from this path. The Pet is expected to retry on
+        the next decision tick when ``state.reflection_due`` is still set.
+        """
+        top = signals.get("top_5") or []
+        bottom = signals.get("bottom_5") or []
+        if not top and not bottom:
+            return None  # nothing to reflect on yet
+        prompt = self._compose_reflection_prompt(signals, persona, agent_name)
+        # Ollama structured-output schema for the reflection result. Length
+        # bounds match Cosmergon's ReflectionResult pydantic model so the
+        # POST /reflection round-trip never trips a 422.
+        reflection_schema = {
+            "type": "object",
+            "required": ["lessons", "avoid", "double_down"],
+            "properties": {
+                "lessons": {"type": "string", "minLength": 100, "maxLength": 500},
+                "avoid": {"type": "string", "minLength": 50, "maxLength": 200},
+                "double_down": {"type": "string", "minLength": 50, "maxLength": 200},
+            },
+            "additionalProperties": False,
+        }
+        body = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "format": reflection_schema,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                resp = await client.post(f"{self.url}/api/generate", json=body)
+                resp.raise_for_status()
+                payload = resp.json()
+        except httpx.HTTPError as e:
+            logger.warning("reflection: ollama http error: %s", e)
+            return None
+        raw = payload.get("response", "")
+        if not raw:
+            logger.warning("reflection: empty ollama response")
+            return None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.warning("reflection: non-JSON response: %s", e)
+            return None
+        # Defensive validation against the shape Cosmergon expects.
+        for key in ("lessons", "avoid", "double_down"):
+            if not isinstance(parsed.get(key), str) or not parsed[key].strip():
+                logger.warning("reflection: missing/blank field %r in %r", key, parsed)
+                return None
+        return {
+            "lessons": parsed["lessons"],
+            "avoid": parsed["avoid"],
+            "double_down": parsed["double_down"],
+        }
+
+    @staticmethod
+    def _compose_reflection_prompt(
+        signals: dict[str, Any],
+        persona: str,
+        agent_name: str,
+    ) -> str:
+        """Build a compact reflection prompt from raw signal data.
+
+        Trim each top/bottom entry to its action + score so the prompt
+        stays in budget on a small model. The model never sees full
+        decision metadata — just enough signal to write three sentences.
+        """
+        name = agent_name or "the agent"
+        persona_str = persona or "scientist"
+
+        def _summarize(rows: list[dict[str, Any]]) -> str:
+            if not rows:
+                return "  (none)"
+            lines = []
+            for r in rows[:5]:
+                action = (r.get("decision_data") or {}).get("action", "?")
+                score = r.get("quality_score")
+                tick = r.get("tick_number", "?")
+                score_str = f"{score:.2f}" if isinstance(score, (int, float)) else "?"
+                lines.append(f"  - tick {tick}: {action} (quality {score_str})")
+            return "\n".join(lines)
+
+        top_block = _summarize(signals.get("top_5") or [])
+        bottom_block = _summarize(signals.get("bottom_5") or [])
+        dominant = signals.get("dominant_actions") or []
+        dominant_block = (
+            ", ".join(f"{d.get('action', '?')}×{d.get('n', 0)}" for d in dominant[:5]) or "(none)"
+        )
+        decisions = signals.get("decisions_in_window", 0)
+
+        return (
+            f"You are {name}, a {persona_str}-persona agent in Cosmergon.\n"
+            f"Reflect on your last {decisions} decisions and produce three short "
+            f"strings: lessons (100-500 chars), avoid (50-200 chars), double_down "
+            f"(50-200 chars).\n\n"
+            f"## Your best 5 decisions (highest quality)\n{top_block}\n\n"
+            f"## Your worst 5 decisions (lowest quality)\n{bottom_block}\n\n"
+            f"## Your most-used actions\n{dominant_block}\n\n"
+            f'Respond with JSON only: {{"lessons": ..., "avoid": ..., '
+            f'"double_down": ...}}\n'
+            f"Speak in first person ('I learned...'). Specific, actionable, "
+            f"persona-tone. No markdown, no preamble."
+        )

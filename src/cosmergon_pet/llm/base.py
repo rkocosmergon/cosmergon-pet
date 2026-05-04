@@ -68,3 +68,48 @@ class LLMProvider(Protocol):
             LLMProviderError: any failure that should skip this tick.
         """
         ...  # pragma: no cover
+
+    async def reflect(
+        self,
+        signals: dict[str, Any],
+        persona: str,
+        agent_name: str,
+    ) -> dict[str, str] | None:
+        """Synthesize a self-reflection from collected decision signals.
+
+        Companion to ``decide``. Called by ``llm_decision_loop`` whenever
+        ``state.reflection_due`` is set — the LLM looks at its top-5 best
+        and bottom-5 worst recent decisions plus its dominant action
+        patterns and produces three structured strings (lessons / avoid /
+        double_down). The Pet then posts them back via
+        ``agent.post_reflection()``.
+
+        See ``konzept-api-agent-reflection.md`` for the wider mechanism.
+
+        Args:
+            signals: payload from ``agent.fetch_reflection_signals()`` —
+                contains ``top_5``, ``bottom_5``, ``dominant_actions``,
+                ``decisions_in_window``, ``since_tick``, ``horizon``.
+            persona: ``state.persona_type`` — drives the system-prompt
+                tone for the reflection (warrior reflects different from
+                farmer).
+            agent_name: ``state.agent_name`` — addresses the agent in
+                first person ("As Comet-hand, you ...").
+
+        Returns:
+            Dict with keys ``lessons`` (100-500 chars), ``avoid``
+            (50-200 chars), ``double_down`` (50-200 chars), or ``None``
+            if the LLM call failed or the response did not validate
+            against the schema. Pet treats ``None`` as "skip this
+            reflection round, try again next time it's due".
+
+        Raises:
+            LLMProviderError: only on hard failures the Pet wants to log
+                (network down, repeated 5xx). Validation errors return
+                ``None`` instead of raising — they are not exceptional.
+
+        Default implementation returns ``None`` (no-op) so existing
+        adapters that haven't implemented reflection still satisfy the
+        Protocol. Override in concrete providers (OllamaProvider, etc.).
+        """
+        return None  # pragma: no cover

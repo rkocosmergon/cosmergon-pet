@@ -6,6 +6,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.21] — 2026-05-04
+
+### Added
+
+- **Pet now runs its own self-reflection** when the Cosmergon backend
+  flags `state.reflection_due`. The flow: backend signals via the new
+  v1.60.862 reflection-API → `_maybe_reflect` calls
+  `agent.fetch_reflection_signals` → `provider.reflect` synthesizes
+  lessons/avoid/double_down using the same llama3.2:3b that drives
+  decisions → `agent.post_reflection` writes the result back as a
+  `self_reflection` event with importance=1.0. Reflection runs BEFORE
+  each decision so the very next memory-prompt picks up the lessons.
+- `LLMProvider.reflect()` added to the protocol with default no-op
+  fallback. `OllamaProvider` implements it via the structured-output
+  mode that matches Cosmergon's `ReflectionResult` schema (lessons
+  100-500 chars, avoid + double_down 50-200 chars).
+- Bumped `cosmergon-agent` floor to `>=0.10.0` (needs the new
+  `fetch_reflection_signals` + `post_reflection` SDK helpers).
+
+### Why
+
+Comet-hand and other api-Agents had been written into the Cosmergon
+data store fine (self_decision + self_outcome + horizon_*-events) but
+were systematically excluded from the in-Cosmergon reflection job
+(`agent_memory_reflection.py::_FIND_AGENTS_SQL` filters on
+`agent_mode='llm'`). Their "Your Past Lessons" memory-block stayed
+empty forever — they collected experience but never synthesized lessons.
+This release closes the gap without granting api-Agents access to a
+Cosmergon-owned LLM (per memory directive
+`feedback_non_npc_merken_und_externe_llm`): inference stays on Pet's
+own Ollama, Cosmergon is data store + write target only. Reflection on
+NPCs stays the in-backend path.
+
 ## [0.1.20] — 2026-05-04
 
 ### Fixed
