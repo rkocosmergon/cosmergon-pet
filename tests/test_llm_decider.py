@@ -307,6 +307,7 @@ def test_valid_actions_set_unchanged() -> None:
         "create_field",
         "transfer_energy",
         "market_list",
+        "market_buy",
         "wait",
     }
     assert mod.VALID_ACTIONS == expected

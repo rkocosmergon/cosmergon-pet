@@ -6,6 +6,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-05-04
+
+### Added
+
+- **`market_buy` is now an offered action**, one schema-branch per
+  affordable listing in `state.world_briefing.market.buyable` (backend
+  ≥ v1.60.866). `listing_id` is rendered as a const so the LLM cannot
+  invent UUIDs. Capped at 10 cheapest-affordable to keep 3B-LLM-Schemas
+  small. Closes the S161 Wachstumspfad-Sprint Step 4 fully alongside
+  Step 2b (NPC-MM cube tokens) — Pet can now actually buy what NPC-MM
+  is selling.
+- Bumped `cosmergon-agent` floor to `>=0.11.0` for the new
+  `world_briefing.market.buyable` field.
+
 ## [0.1.22] — 2026-05-04
 
 ### Added
