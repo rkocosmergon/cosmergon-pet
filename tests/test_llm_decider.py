@@ -301,7 +301,14 @@ def test_valid_actions_set_unchanged() -> None:
     "Available actions" list per state — but the allowlist still gates them.
     """
     mod = _import_or_skip()
-    expected = {"place_cells", "evolve", "create_field", "transfer_energy", "wait"}
+    expected = {
+        "place_cells",
+        "evolve",
+        "create_field",
+        "transfer_energy",
+        "market_list",
+        "wait",
+    }
     assert mod.VALID_ACTIONS == expected
 
 
