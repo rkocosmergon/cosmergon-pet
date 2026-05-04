@@ -59,6 +59,7 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "create_field",
         "transfer_energy",
         "market_list",
+        "market_buy",
         "wait",
     }
 )
@@ -571,6 +572,29 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                     f"market_list   price_energy={price}",
                 )
             )
+
+    # market_buy: one branch per affordable listing. Uses
+    # state.world_briefing.market.buyable from backend ≥ v1.60.866 — the
+    # listing_id goes in as a const, so the LLM cannot invent UUIDs.
+    # Filtered to listings the agent can actually pay for; capped at 10
+    # to keep the schema small for 3B-LLMs even when the backend
+    # surfaces 20.
+    market = getattr(wb, "market", None) if wb is not None else None
+    buyable = list(getattr(market, "buyable", ()) or ())
+    affordable_buyable = [b for b in buyable if float(getattr(b, "price_energy", 0)) <= energy]
+    for entry in affordable_buyable[:10]:
+        listing_id = getattr(entry, "listing_id", None)
+        if not listing_id:
+            continue
+        item_type = getattr(entry, "item_type", "?")
+        price = float(getattr(entry, "price_energy", 0))
+        choices.append(
+            _make_choice(
+                "market_buy",
+                {"listing_id": str(listing_id)},
+                f"market_buy    listing_id={listing_id}  ({item_type} for {price:.0f} E)",
+            )
+        )
 
     choices.append(_make_choice("wait", {}, "wait"))
     return choices
