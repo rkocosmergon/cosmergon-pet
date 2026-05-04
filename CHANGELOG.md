@@ -6,6 +6,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-05-04
+
+### Added
+
+- **Optional prompt-dump for diagnosis** — when the env var
+  `COSMERGON_PET_PROMPT_DUMP_PATH` is set to a writable file path, every
+  LLM decision round appends one JSONL line containing the exact 4-tuple
+  passed to `provider.decide` (system_prompt, memory, world, schema) plus
+  timestamp + agent_id. Off by default, no I/O when the env var is unset.
+  Token-free by construction (player-token never enters this path).
+  Designed for targeted comparison against an in-Cosmergon NPC LLM input
+  when investigating divergent behaviour (e.g. why Comet-hand chose
+  100% wait while the same llama3.2:3b chose 67% growth as an NPC).
+
 ## [0.1.18] — 2026-05-04
 
 ### Changed
