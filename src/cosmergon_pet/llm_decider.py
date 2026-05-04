@@ -423,9 +423,15 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                 )
             )
 
-    # create_field: only for owned cubes (newcomers have none → not offered,
-    # which prevents the cube_id hallucination loop seen in S160 empirics).
-    for c in own_cubes:
+    # create_field: every cube in the universe is fair game — Cosmergon's
+    # backend allows any agent to add a field to any cube (cube ownership is
+    # an affiliate marker, not an access gate). Pre-S161 we only offered own
+    # cubes, which structurally locked newcomers (no cube → no growth path)
+    # and was the wrong fix for the S160 hallucination problem; the real
+    # safeguard is that every cube_id we surface here is a real backend UUID
+    # from `state.universe_cubes`, so the LLM cannot invent IDs anyway.
+    universe_cubes = list(getattr(state, "universe_cubes", []) or [])
+    for c in universe_cubes:
         cid = getattr(c, "id", None)
         if cid:
             cid_str = str(cid)
@@ -522,6 +528,7 @@ def _format_world(
     energy = getattr(state, "energy", "?")
     fields = list(getattr(state, "fields", []) or [])
     own_cubes = list(getattr(state, "cubes", []) or [])
+    universe_cubes = list(getattr(state, "universe_cubes", []) or [])
 
     # Pull trigger-info from world_briefing.situation if available — these are
     # the signals that tell the LLM whether wait is rational or whether action
@@ -550,7 +557,12 @@ def _format_world(
             f"Energy: {energy} E (trend: {energy_trend})",
             f"Fields you own: {len(fields)}"
             + (f" ({fields_without_cells} empty — losing income)" if fields_without_cells else ""),
-            f"Cubes you own: {len(own_cubes)}",
+            f"Cubes you own: {len(own_cubes)}"
+            + (
+                f" — {len(universe_cubes)} cubes available universe-wide for create_field"
+                if len(universe_cubes) > len(own_cubes)
+                else ""
+            ),
         ]
     )
 
