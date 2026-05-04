@@ -58,6 +58,7 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "evolve",
         "create_field",
         "transfer_energy",
+        "market_list",
         "wait",
     }
 )
@@ -552,6 +553,22 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                     "create_field",
                     {"cube_id": cid_str},
                     f"create_field  cube_id={cid_str}",
+                )
+            )
+
+    # market_list: offered when the agent has a meaningful energy surplus.
+    # Three price-tiers so the LLM picks based on its own urgency: cheap
+    # (400 = vagant floor — moves fast), market (450 — middle), patient
+    # (500 — accept slower fill for more value). Backend (S161, KAT-B)
+    # defaults item_type='energy' so we don't have to pass it.
+    energy = float(getattr(state, "energy", 0) or 0)
+    if energy >= 1500:
+        for price in (400.0, 450.0, 500.0):
+            choices.append(
+                _make_choice(
+                    "market_list",
+                    {"price_energy": price},
+                    f"market_list   price_energy={price}",
                 )
             )
 

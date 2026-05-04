@@ -6,6 +6,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-05-04
+
+### Added
+
+- **`market_list` is now an offered action** when the agent's energy
+  exceeds 1500 E. Three price-tiers in the schema (400 / 450 / 500 E)
+  let the LLM pick by urgency: 400 = vagant floor (moves fast), 500 =
+  patient. Backend defaults `item_type='energy'` (S161 KAT-B), so Pet
+  doesn't have to pass it. Trade tier of the Cosmergon S161
+  Wachstumspfad-Sprint Step 4 — without `market_buy` (which needs
+  dynamic per-listing schema branches and waits for NPC-MM cube
+  liquidity per Step 2b).
+- `VALID_ACTIONS` allowlist gains `"market_list"`.
+
 ## [0.1.21] — 2026-05-04
 
 ### Added
