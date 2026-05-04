@@ -6,6 +6,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.20] — 2026-05-04
+
+### Fixed
+
+- **`_poll_state` now mirrors the fetched GameState into the SDK's
+  `agent._state`** so consumers that read `agent.state` (the LLM-Decider,
+  third-party hooks) see the latest snapshot. Previously the custom
+  polling loop only filled `ps.game_state` for the display while
+  `agent._state` stayed `None`, because Pet runs its own polling instead
+  of the SDK's `on_tick` driver. The LLM-Decider then read `None`,
+  `_build_action_choices` collapsed to the single `wait` row, and the
+  schema constrained the LLM to "wait" forever. Diagnosed 2026-05-04 via
+  the prompt-dump introduced in v0.1.19: 3/3 captured rounds had
+  `world="(no state available — agent not yet connected)"` while
+  `/state` was returning 200 OK and `ps.game_state` was filled. Comet-hand
+  chose 100% wait for ~33h despite the same llama3.2:3b choosing 67%
+  growth as an in-Cosmergon NPC.
+
 ## [0.1.19] — 2026-05-04
 
 ### Added

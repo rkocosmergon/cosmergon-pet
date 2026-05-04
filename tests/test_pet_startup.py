@@ -46,6 +46,31 @@ def test_run_pet_uses_async_with_agent() -> None:
     )
 
 
+def test_poll_state_mirrors_state_into_sdk() -> None:
+    """`_poll_state` must write the fetched GameState into `agent._state`.
+
+    Diagnosed 2026-05-04: Pet's custom polling loop filled `ps.game_state`
+    but left `agent._state` at None, so the LLM-Decider (which reads
+    `agent.state` via SDK property) saw an empty state and built only the
+    `wait` schema-choice. Comet-hand chose 100% wait for ~33h despite
+    /state returning 200 OK — same llama3.2:3b chose 67% growth as an NPC.
+
+    Static check: source contains `agent._state =` inside `_poll_state`.
+    Cheap, fast, catches regressions instantly. Full integration would
+    require mocking httpx + asyncio; the source check covers the same
+    contract.
+    """
+    from cosmergon_pet.face import _poll_state
+
+    src = inspect.getsource(_poll_state)
+    assert "agent._state = state" in src, (
+        "`_poll_state` is not mirroring the fetched state into the SDK's "
+        "`_state` slot. Without this, `agent.state` (read by the "
+        "LLM-Decider) remains None and the only schema-choice the LLM "
+        "ever sees is `wait`."
+    )
+
+
 def test_sdk_client_is_none_before_open() -> None:
     """Canary: a freshly constructed CosmergonAgent has no HTTP client.
 

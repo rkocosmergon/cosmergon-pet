@@ -1151,7 +1151,19 @@ async def _poll_state(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event) 
                 "GET", f"/api/v1/agents/{agent.agent_id}/state"
             )
             if resp.status_code == 200:
-                ps.game_state = GameState.from_api(resp.json())
+                state = GameState.from_api(resp.json())
+                ps.game_state = state
+                # Mirror into the SDK's own state slot so consumers that read
+                # `agent.state` (the LLM-Decider, third-party hooks) see the
+                # latest snapshot. Without this, the SDK's `_state` stays
+                # `None` because Pet runs its own polling loop instead of the
+                # SDK's `on_tick` driver — the LLM-Decider then sees an empty
+                # GameState and `_build_action_choices` collapses to only the
+                # `wait` line. Diagnosed 2026-05-04 via the prompt-dump
+                # introduced in v0.1.19: 3/3 captured rounds had `world="(no
+                # state available — agent not yet connected)"` while
+                # `ps.game_state` was filled and `/state` returned 200 OK.
+                agent._state = state  # intentional cross-module sync
                 ps.connection_ok = True
                 ps.last_error = ""
                 ps.last_state_poll_at = time.monotonic()
