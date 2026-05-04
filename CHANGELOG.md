@@ -6,6 +6,45 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-05-04
+
+### Changed
+
+- **`create_field` choices now cover the whole universe**, not just owned
+  cubes. The Cosmergon backend permits any agent to add a field to any
+  cube — cube ownership is an affiliate marker, not an access gate
+  (S161 spec clarification). Pre-S161 the Pet only offered `create_field`
+  rows for `state.cubes` (own cubes), which structurally locked Comet-hand
+  and other newcomers without their own cube: they had no growth path,
+  even though the backend would have accepted the call.
+- **`_build_action_choices` now reads `state.universe_cubes`** (already
+  exposed by the SDK / `AgentStateResponse.universe_cubes`). The S160
+  hallucination concern that motivated the own-cubes-only restriction
+  is structurally addressed by sourcing every cube_id from the backend
+  response — the LLM cannot invent UUIDs because it can only pick from
+  the rendered `oneOf`-list.
+- **Situation block** now hints at universe-wide cube availability
+  (`"Cubes you own: 0 — 30 cubes available universe-wide for create_field"`)
+  when the agent owns fewer cubes than exist in the universe — gives
+  the LLM a clear signal that growth via foreign cubes is allowed.
+
+### Why this matters
+
+Comet-hand sat with 1 field, 3 cells, max_reife 10818 (T2 oscillator) at
+9990 E for 33+ hours, choosing `wait` repeatedly because the Pet's
+schema-mode never offered him a path to grow. He has no own cube, so
+`create_field` was structurally absent from his choice list. With this
+change, Comet-hand sees every available universe cube as a valid target
+the moment the next decision tick fires.
+
+### Tests
+
+- `test_format_world_no_create_field_when_universe_empty` (renamed)
+- `test_format_world_lists_create_field_for_universe_cubes` (new — S161 use case)
+- `test_format_world_create_field_when_only_own_cubes_present` (renamed,
+  default mirroring of `cube_ids` to `universe_cube_ids` keeps it green)
+- `_make_state` helper extended with `universe_cube_ids` parameter
+
 ## [0.1.17] — 2026-05-03
 
 ### Changed

@@ -35,11 +35,14 @@ def _make_state(
     energy: float = 1000.0,
     field_ids: list[tuple[str, int]] | None = None,
     cube_ids: list[str] | None = None,
+    universe_cube_ids: list[str] | None = None,
     affordable_presets: tuple[str, ...] = ("block", "blinker"),
 ) -> MagicMock:
     """Build a fake GameState with explicit fields/cubes/presets.
 
     `field_ids`: list of (id, tier). `cube_ids`: own cube IDs.
+    `universe_cube_ids`: cube IDs available in the universe (for create_field
+    via state.universe_cubes; defaults to cube_ids when not given).
     The returned mock matches the SDK GameState attribute shape used by
     `_build_action_choices` and `_format_world`.
     """
@@ -58,6 +61,11 @@ def _make_state(
         c = MagicMock()
         c.id = cid
         state.cubes.append(c)
+    state.universe_cubes = []
+    for cid in universe_cube_ids if universe_cube_ids is not None else (cube_ids or []):
+        c = MagicMock()
+        c.id = cid
+        state.universe_cubes.append(c)
     sit = MagicMock()
     sit.affordable_presets = affordable_presets
     wb = MagicMock()
@@ -187,15 +195,35 @@ def test_format_world_no_fields_only_wait() -> None:
     assert "create_field" not in out
 
 
-def test_format_world_no_create_field_when_no_cubes() -> None:
-    """Without owned cubes, create_field must NOT appear (anti-hallucination)."""
+def test_format_world_no_create_field_when_universe_empty() -> None:
+    """No cubes anywhere → create_field must NOT appear."""
     mod = _import_or_skip()
-    out = mod._format_world(_make_state(field_ids=[("f1", 1)], cube_ids=[]))
+    out = mod._format_world(_make_state(field_ids=[("f1", 1)], cube_ids=[], universe_cube_ids=[]))
     assert "create_field" not in out
 
 
-def test_format_world_lists_create_field_when_own_cubes_present() -> None:
-    """Owned cubes → create_field rows with their real cube_ids."""
+def test_format_world_lists_create_field_for_universe_cubes() -> None:
+    """S161: every universe cube is fair game for create_field, not just owned ones.
+    Backend permits any agent to add a field to any cube — the cube_ids come
+    from state.universe_cubes (real backend UUIDs, no hallucination risk).
+    """
+    mod = _import_or_skip()
+    out = mod._format_world(
+        _make_state(
+            field_ids=[],
+            cube_ids=[],  # newcomer with no own cubes
+            universe_cube_ids=["foreign-A", "foreign-B"],
+        )
+    )
+    assert "create_field" in out
+    assert "foreign-A" in out
+    assert "foreign-B" in out
+
+
+def test_format_world_create_field_when_only_own_cubes_present() -> None:
+    """Owned cubes (no separate universe_cube_ids given → mirrors cube_ids).
+    create_field rows with their real cube_ids appear.
+    """
     mod = _import_or_skip()
     out = mod._format_world(_make_state(field_ids=[], cube_ids=["cube-A", "cube-B"]))
     assert "create_field" in out
@@ -338,7 +366,9 @@ def test_one_decision_passes_persona_aware_prompt_to_provider() -> None:
     provider = _make_provider({"action": "wait", "params": {}})
     asyncio.run(mod._one_decision(agent, provider, None))
     call_args = provider.decide.await_args
-    system_prompt_arg = call_args.args[0] if call_args.args else call_args.kwargs.get("system_prompt")
+    system_prompt_arg = (
+        call_args.args[0] if call_args.args else call_args.kwargs.get("system_prompt")
+    )
     assert "Comet-hand" in system_prompt_arg
     assert "warrior-persona" in system_prompt_arg
 
