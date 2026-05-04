@@ -37,7 +37,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
+from pathlib import Path
 from typing import Any
 
 from cosmergon_agent import CosmergonAgent
@@ -231,6 +233,52 @@ async def llm_decision_loop(
     logger.info("llm_decision_loop stopped")
 
 
+_DUMP_ENV_VAR = "COSMERGON_PET_PROMPT_DUMP_PATH"
+
+
+def _maybe_dump_prompt(
+    agent: CosmergonAgent,
+    system_prompt: str,
+    memory: str,
+    world: str,
+    schema: dict[str, Any],
+) -> None:
+    """Optional diagnostic: dump the LLM input 4-tuple to a JSONL file.
+
+    Activated only when ``COSMERGON_PET_PROMPT_DUMP_PATH`` env var is set
+    to a writable file path. Each call appends one JSON object per line:
+    ``{timestamp, agent_id, system_prompt, memory, world, schema}``.
+
+    Off by default — no file I/O when env var is unset. Designed for
+    targeted diagnosis (compare Pet's LLM input against an in-Cosmergon
+    NPC's LLM input for the same game state); not meant for permanent
+    logging. Token-free by construction: only inputs to ``provider.decide``
+    are written; player-token never touches this path.
+
+    Failures are logged at WARNING and swallowed — diagnostic must not
+    affect the decision loop.
+    """
+    dump_path_str = os.environ.get(_DUMP_ENV_VAR)
+    if not dump_path_str:
+        return
+    try:
+        dump_path = Path(dump_path_str)
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        agent_id = getattr(agent.state, "agent_id", None) or getattr(agent.state, "id", None)
+        entry = {
+            "timestamp": time.time(),
+            "agent_id": str(agent_id) if agent_id else "",
+            "system_prompt": system_prompt,
+            "memory": memory,
+            "world": world,
+            "schema": schema,
+        }
+        with dump_path.open("a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except Exception:
+        logger.warning("prompt-dump failed", exc_info=True)
+
+
 async def _one_decision(
     agent: CosmergonAgent,
     provider: LLMProvider,
@@ -248,6 +296,8 @@ async def _one_decision(
     persona = getattr(agent.state, "persona_type", "") or ""
     name = getattr(agent.state, "agent_name", "") or ""
     system_prompt = _build_system_prompt(persona, name)
+
+    _maybe_dump_prompt(agent, system_prompt, memory, world, schema)
 
     t0 = time.monotonic()
     try:

@@ -373,6 +373,80 @@ def test_one_decision_passes_persona_aware_prompt_to_provider() -> None:
     assert "warrior-persona" in system_prompt_arg
 
 
+def test_maybe_dump_prompt_off_by_default(monkeypatch, tmp_path) -> None:
+    """Without env var: no file I/O. Diagnostic must be opt-in only.
+
+    Sanity-checks that loading Pet in production (env var unset) does not
+    create dump artefacts.
+    """
+    mod = _import_or_skip()
+    monkeypatch.delenv("COSMERGON_PET_PROMPT_DUMP_PATH", raising=False)
+    state = _make_state()
+    state.persona_type = "scientist"
+    state.agent_name = "T"
+    agent = _make_agent(state=state)
+    mod._maybe_dump_prompt(agent, "sys", "mem", "world", {"k": "v"})
+    assert list(tmp_path.iterdir()) == []  # nothing created
+
+
+def test_maybe_dump_prompt_writes_jsonl_when_env_set(monkeypatch, tmp_path) -> None:
+    """With env var set: one JSON line appended per call, with all 6 keys.
+
+    Verifies the on-the-wire shape of the diagnostic file so downstream
+    inspection scripts (`jq` / NPC-prompt diff) can rely on it.
+    """
+    mod = _import_or_skip()
+    dump_file = tmp_path / "subdir" / "dump.jsonl"
+    monkeypatch.setenv("COSMERGON_PET_PROMPT_DUMP_PATH", str(dump_file))
+    state = _make_state()
+    state.persona_type = "warrior"
+    state.agent_name = "Comet-hand"
+    state.agent_id = "abc-123"
+    agent = _make_agent(state=state)
+
+    mod._maybe_dump_prompt(
+        agent,
+        system_prompt="you are warrior",
+        memory="mem-block",
+        world="world-block",
+        schema={"oneOf": [{"const": {"action": "wait"}}]},
+    )
+
+    assert dump_file.exists()
+    lines = dump_file.read_text().splitlines()
+    assert len(lines) == 1
+    import json as _json
+
+    entry = _json.loads(lines[0])
+    assert set(entry.keys()) == {
+        "timestamp",
+        "agent_id",
+        "system_prompt",
+        "memory",
+        "world",
+        "schema",
+    }
+    assert entry["agent_id"] == "abc-123"
+    assert entry["system_prompt"] == "you are warrior"
+    assert entry["schema"] == {"oneOf": [{"const": {"action": "wait"}}]}
+
+
+def test_maybe_dump_prompt_swallows_io_error(monkeypatch, tmp_path) -> None:
+    """A broken dump path must not crash the decision loop.
+
+    Pet must survive even when the diagnostic feature is misconfigured.
+    """
+    mod = _import_or_skip()
+    # Path under a non-writable parent — make parent a file so mkdir fails
+    parent = tmp_path / "block"
+    parent.write_text("file-not-dir")
+    monkeypatch.setenv("COSMERGON_PET_PROMPT_DUMP_PATH", str(parent / "x" / "dump.jsonl"))
+    state = _make_state()
+    agent = _make_agent(state=state)
+    # Should not raise
+    mod._maybe_dump_prompt(agent, "sys", "mem", "world", {})
+
+
 if __name__ == "__main__":
     test_one_decision_executes_action()
     test_one_decision_wait_skips_act()
