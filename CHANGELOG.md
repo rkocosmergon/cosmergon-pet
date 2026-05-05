@@ -6,6 +6,41 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.24] — 2026-05-05
+
+### Added
+
+- **`expansionist` and `trader` personas** in `_PERSONA_GUIDANCE` —
+  previously only scientist/warrior/diplomat/farmer had guidance blocks,
+  unknown personas fell back to scientist. Comet-hand happens to be
+  scientist; other Pets with these personas now get persona-appropriate
+  sequences instead of scientist-fallback.
+
+### Changed
+
+- **All persona sequences now include `market_buy` and `market_list`** as
+  numbered options. v0.1.22/23 had added these as schema choices, but the
+  system-prompt sequences stayed at the 4-item `place_cells > evolve >
+  create_field > wait` pattern from before market existed. Llama3.2:3b
+  follows the persona-prompt exactly (S161 NPC empirie: 67% place_cells
+  when prompt says place_cells first), so without market in the sequence
+  the LLM never tried market — Comet-hand 7 h post-v0.1.23 had **0**
+  market attempts despite 1.19 M E balance + offered choices.
+- **`scientist` sequence reordered**: `evolve` is now (1), `place_cells`
+  is (2). Matches backend NPC pattern; reminds the LLM that an evolve is
+  a tier-jump (~doubles output) when one is offered.
+- Per-persona market priority: scientist/farmer keep market low (4-5),
+  warrior/diplomat mid (4), expansionist (2), trader (1-2). Persona
+  identity preserved — scientist still primarily experiments, trader
+  primarily trades.
+
+### Notes
+
+- Backend pendant: `cosmergon` v1.60.876 adds KAT-A Auto-Resolve in
+  `_handle_market_buy` and `_handle_market_list` so an LLM that emits
+  `market_buy {}` (without listing_id) gets the cheapest affordable
+  listing auto-picked instead of a 422. NPC-side parallel fix.
+
 ## [0.1.23] — 2026-05-04
 
 ### Added
