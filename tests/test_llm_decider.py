@@ -337,13 +337,14 @@ def test_build_system_prompt_uses_persona_and_name() -> None:
     assert "Comet-hand" in prompt
     assert "scientist-persona" in prompt
     assert "methodical and curious" in prompt
-    # S162: scientist sequence now puts evolve first (was place_cells).
-    # New 6-item sequence with market_buy + market_list inserted.
-    assert "(1) evolve" in prompt
-    assert "(2) place_cells" in prompt
+    # S162 L1: scientist sequence is now conditional ("WHEN to act / IF / ELSE").
+    # market_buy + market_list + evolve sind alle conditional erwähnt.
+    assert "WHEN to act" in prompt
+    assert "evolve" in prompt
+    assert "place_cells" in prompt
     assert "market_buy" in prompt
     assert "market_list" in prompt
-    assert "(6) wait" in prompt
+    assert "ELSE" in prompt
 
 
 def test_build_system_prompt_unknown_persona_falls_back_to_scientist() -> None:
