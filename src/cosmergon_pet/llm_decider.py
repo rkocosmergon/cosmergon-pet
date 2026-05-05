@@ -52,6 +52,63 @@ DEFAULT_INTERVAL_S = 60.0
 """Default seconds between LLM decisions. Matches the Cosmergon tick (60 s)."""
 
 
+# S162 force-explore: counter for consecutive identical action choices.
+# When the LLM converges on one action (e.g. scientist-persona perpetually
+# choosing place_cells with 1.19M energy in pocket), the Reflection-Loop
+# alone does not break the cycle — small models (llama3.2:3b) often emit
+# contradictory lessons ("avoid place_cells" AND "double down place_cells"
+# in the same reflection). The force-explore mechanic is a deterministic
+# safety-valve: after N consecutive identical actions, override the next
+# decision with a different non-wait choice from the offered list.
+#
+# Disabled by default. Enable with ``PET_FORCE_EXPLORE_AFTER_N=<N>`` env
+# (recommended N=5; <2 disables). Off-list and wait-fallback semantics
+# from S160/S157 still apply — force-explore only swaps WHICH offered
+# choice is taken, never invents UUIDs or actions outside the schema.
+_FORCE_EXPLORE_ENV_VAR = "PET_FORCE_EXPLORE_AFTER_N"
+
+
+def _force_explore_threshold() -> int:
+    """Read PET_FORCE_EXPLORE_AFTER_N env. Returns 0 if disabled or invalid."""
+    raw = os.environ.get(_FORCE_EXPLORE_ENV_VAR, "0")
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return n if n >= 2 else 0
+
+
+def _pick_explore_choice(
+    choices: list[dict[str, Any]],
+    avoid_action: str,
+) -> dict[str, Any] | None:
+    """Pick a non-wait choice with action != avoid_action.
+
+    Priority order: market_buy > market_list > evolve > create_field > other.
+    These are the actions most likely to break out of a place_cells-loop —
+    market_buy moves capital into Cubes (growth path), market_list activates
+    the dormant economy, evolve consumes accumulated energy at the right
+    field, create_field expands footprint. ``place_cells`` is always among
+    the candidates if avoid_action is something else (e.g. force out of
+    a market_buy-loop should still allow place_cells as fallback).
+
+    Returns None if no alternative is available — caller falls back to the
+    LLM's original choice (no override possible).
+    """
+    priority = ("market_buy", "market_list", "evolve", "create_field", "transfer_energy")
+    by_action: dict[str, list[dict[str, Any]]] = {}
+    for c in choices:
+        if c["action"] in (avoid_action, "wait"):
+            continue
+        by_action.setdefault(c["action"], []).append(c)
+    for preferred in priority:
+        if preferred in by_action:
+            return by_action[preferred][0]
+    # Fallback: any non-wait, non-avoid action
+    remaining = [c for c in choices if c["action"] not in (avoid_action, "wait")]
+    return remaining[0] if remaining else None
+
+
 VALID_ACTIONS: frozenset[str] = frozenset(
     {
         "place_cells",
@@ -216,15 +273,20 @@ async def llm_decision_loop(
             to flash an "LLM acted" indicator.
     """
     stop = stop or asyncio.Event()
+    threshold = _force_explore_threshold()
     logger.info(
-        "llm_decision_loop started provider=%s model=%s interval=%.1fs",
+        "llm_decision_loop started provider=%s model=%s interval=%.1fs force_explore=%s",
         provider.name,
         provider.model_string,
         interval_s,
+        f"after-{threshold}" if threshold else "off",
     )
+    # S162: per-loop streak state. {"last_action": str|None, "count": int}
+    # Reset to count=0 on every action change (or wait/error).
+    streak_state: dict[str, Any] = {"last_action": None, "count": 0}
     while not stop.is_set():
         try:
-            await _one_decision(agent, provider, on_decision)
+            await _one_decision(agent, provider, on_decision, streak_state=streak_state)
         except Exception:
             # Catch-all: nothing in this loop is allowed to kill the Pet.
             logger.warning("llm_decision_loop iteration failed", exc_info=True)
@@ -343,8 +405,15 @@ async def _one_decision(
     agent: CosmergonAgent,
     provider: LLMProvider,
     on_decision: callable | None,  # type: ignore[type-arg]
+    *,
+    streak_state: dict[str, Any] | None = None,
 ) -> None:
-    """Single decision round. Logged but does not raise."""
+    """Single decision round. Logged but does not raise.
+
+    `streak_state`: optional per-loop dict for S162 force-explore
+    (``{"last_action": str|None, "count": int}``). When None (default,
+    e.g. in tests), force-explore is disabled regardless of env var.
+    """
     # Reflection runs BEFORE the decision so the upcoming LLM call sees
     # a memory-prompt that already includes the freshly-written
     # self_reflection (importance=1.0 → renderer's "## Your Past Lessons"
@@ -405,8 +474,39 @@ async def _one_decision(
             on_decision("(off_list)", {}, elapsed, False)
         return
 
+    # S162 Force-Explore: nach N consecutive identical actions ein non-wait,
+    # non-self-Override aus den offered choices wählen. Schutz gegen
+    # persona-bedingten LLM-Konvergenz-Loop (z.B. scientist → place_cells×N).
+    threshold = _force_explore_threshold()
+    forced_label: str | None = None
+    if (
+        streak_state is not None
+        and threshold > 0
+        and action != "wait"
+        and streak_state.get("last_action") == action
+        and streak_state.get("count", 0) + 1 >= threshold
+    ):
+        forced_choice = _pick_explore_choice(choices, avoid_action=action)
+        if forced_choice is not None:
+            forced_label = forced_choice["action"]
+            logger.warning(
+                "force-explore: streak %d×%s → override to %s (params=%s)",
+                streak_state["count"] + 1,
+                action,
+                forced_label,
+                _redact_params(forced_choice["params"]),
+            )
+            action = forced_choice["action"]
+            params = forced_choice["params"]
+            # Reset streak so the forced action does not immediately re-trigger
+            streak_state["last_action"] = None
+            streak_state["count"] = 0
+
     if action == "wait":
         logger.info("llm chose wait (%.1fs)", elapsed)
+        if streak_state is not None:
+            streak_state["last_action"] = None
+            streak_state["count"] = 0
         if on_decision is not None:
             on_decision("wait", {}, elapsed, True)
         return
@@ -418,12 +518,29 @@ async def _one_decision(
         logger.warning("agent.act(%s) failed: %s", action, e)
         success = False
 
+    # S162: Streak-Update nach jeder Real-Action.
+    if streak_state is not None:
+        if forced_label is not None:
+            # Force-Override war eben — neu starten mit gewählter Action.
+            streak_state["last_action"] = action if success else None
+            streak_state["count"] = 1 if success else 0
+        elif success:
+            if streak_state.get("last_action") == action:
+                streak_state["count"] = streak_state.get("count", 0) + 1
+            else:
+                streak_state["last_action"] = action
+                streak_state["count"] = 1
+        else:
+            streak_state["last_action"] = None
+            streak_state["count"] = 0
+
     logger.info(
-        "llm action=%s params=%s success=%s decided_in=%.1fs",
+        "llm action=%s params=%s success=%s decided_in=%.1fs%s",
         action,
         _redact_params(params),
         success,
         elapsed,
+        " (force-explore)" if forced_label is not None else "",
     )
     if on_decision is not None:
         on_decision(action, params, elapsed, success)

@@ -455,6 +455,195 @@ def test_maybe_dump_prompt_swallows_io_error(monkeypatch, tmp_path) -> None:
     mod._maybe_dump_prompt(agent, "sys", "mem", "world", {})
 
 
+# === S162 force-explore: streak counter + override ===========================
+
+
+def test_force_explore_threshold_default_disabled(monkeypatch) -> None:
+    """No env → 0 (disabled)."""
+    mod = _import_or_skip()
+    monkeypatch.delenv("PET_FORCE_EXPLORE_AFTER_N", raising=False)
+    assert mod._force_explore_threshold() == 0
+
+
+def test_force_explore_threshold_below_2_disabled(monkeypatch) -> None:
+    """N=1 makes no sense (1× = baseline) → treated as disabled."""
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "1")
+    assert mod._force_explore_threshold() == 0
+
+
+def test_force_explore_threshold_invalid_disabled(monkeypatch) -> None:
+    """Non-int env → 0."""
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "garbage")
+    assert mod._force_explore_threshold() == 0
+
+
+def test_force_explore_threshold_valid(monkeypatch) -> None:
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "5")
+    assert mod._force_explore_threshold() == 5
+
+
+def test_pick_explore_choice_prefers_market_buy_over_evolve() -> None:
+    mod = _import_or_skip()
+    choices = [
+        {"action": "place_cells", "params": {"field_id": "f1", "preset": "block"}},
+        {"action": "evolve", "params": {"field_id": "f1"}},
+        {"action": "market_buy", "params": {"listing_id": "L1"}},
+        {"action": "wait", "params": {}},
+    ]
+    pick = mod._pick_explore_choice(choices, avoid_action="place_cells")
+    assert pick is not None
+    assert pick["action"] == "market_buy"
+
+
+def test_pick_explore_choice_excludes_avoid_action() -> None:
+    mod = _import_or_skip()
+    choices = [
+        {"action": "place_cells", "params": {"field_id": "f1"}},
+        {"action": "evolve", "params": {"field_id": "f1"}},
+        {"action": "wait", "params": {}},
+    ]
+    pick = mod._pick_explore_choice(choices, avoid_action="place_cells")
+    assert pick is not None
+    assert pick["action"] == "evolve"
+
+
+def test_pick_explore_choice_returns_none_when_only_avoid_and_wait() -> None:
+    mod = _import_or_skip()
+    choices = [
+        {"action": "place_cells", "params": {"field_id": "f1"}},
+        {"action": "wait", "params": {}},
+    ]
+    pick = mod._pick_explore_choice(choices, avoid_action="place_cells")
+    assert pick is None
+
+
+def test_one_decision_force_explore_overrides_after_threshold(monkeypatch) -> None:
+    """Streak == threshold and same action repeats → force-override fires."""
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "3")
+
+    # State must include both an own field (place_cells) and an own cube
+    # with a buyable market listing for the override path to find an
+    # alternative. We set up universe_cubes (create_field) as the fallback.
+    state = _make_state(field_ids=[("f1", 1)], universe_cube_ids=["c1"])
+    agent = _make_agent(state=state)
+    provider = _make_provider(
+        {"action": "place_cells", "params": {"field_id": "f1", "preset": "block"}}
+    )
+    callback_calls: list[tuple] = []
+
+    def on_decision(action: str, params: dict, elapsed: float, success: bool) -> None:
+        callback_calls.append((action, params, success))
+
+    streak = {"last_action": "place_cells", "count": 2}  # at threshold-1 already
+    asyncio.run(mod._one_decision(agent, provider, on_decision, streak_state=streak))
+
+    # The forced override picked from priority order
+    # (market_buy > market_list > evolve > create_field). State has tier=1
+    # field → evolve is offered AND beats create_field by priority.
+    assert len(callback_calls) == 1
+    action, _, _ = callback_calls[0]
+    assert action != "place_cells"
+    assert action == "evolve"
+    # Streak resets to 1 (the just-executed forced action) on success
+    assert streak["last_action"] == "evolve"
+    assert streak["count"] == 1
+
+
+def test_one_decision_no_force_explore_when_disabled(monkeypatch) -> None:
+    """Default (env unset) → no override even with high streak."""
+    mod = _import_or_skip()
+    monkeypatch.delenv("PET_FORCE_EXPLORE_AFTER_N", raising=False)
+
+    state = _make_state(field_ids=[("f1", 1)], universe_cube_ids=["c1"])
+    agent = _make_agent(state=state)
+    provider = _make_provider(
+        {"action": "place_cells", "params": {"field_id": "f1", "preset": "block"}}
+    )
+    callback_calls: list[tuple] = []
+
+    def on_decision(action: str, params: dict, elapsed: float, success: bool) -> None:
+        callback_calls.append((action, params, success))
+
+    streak = {"last_action": "place_cells", "count": 99}  # huge streak
+    asyncio.run(mod._one_decision(agent, provider, on_decision, streak_state=streak))
+
+    # Disabled → place_cells passes through, streak increments normally
+    action, _, _ = callback_calls[0]
+    assert action == "place_cells"
+    assert streak["count"] == 100
+
+
+def test_one_decision_streak_increments_on_repeat(monkeypatch) -> None:
+    """Same action twice in a row → streak.count goes 1 → 2 (no override below threshold)."""
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "5")
+
+    state = _make_state(field_ids=[("f1", 1)])
+    agent = _make_agent(state=state)
+    provider = _make_provider(
+        {"action": "place_cells", "params": {"field_id": "f1", "preset": "block"}}
+    )
+
+    streak = {"last_action": None, "count": 0}
+    asyncio.run(mod._one_decision(agent, provider, None, streak_state=streak))
+    assert streak == {"last_action": "place_cells", "count": 1}
+    asyncio.run(mod._one_decision(agent, provider, None, streak_state=streak))
+    assert streak == {"last_action": "place_cells", "count": 2}
+
+
+def test_one_decision_streak_resets_on_action_change(monkeypatch) -> None:
+    """Different action → streak resets to count=1 with new last_action."""
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "5")
+
+    state = _make_state(field_ids=[("f1", 2)])
+    agent = _make_agent(state=state)
+    # First place_cells, then evolve
+    provider1 = _make_provider(
+        {"action": "place_cells", "params": {"field_id": "f1", "preset": "block"}}
+    )
+    provider2 = _make_provider({"action": "evolve", "params": {"field_id": "f1"}})
+
+    streak = {"last_action": "place_cells", "count": 3}
+    asyncio.run(mod._one_decision(agent, provider1, None, streak_state=streak))
+    assert streak == {"last_action": "place_cells", "count": 4}
+
+    asyncio.run(mod._one_decision(agent, provider2, None, streak_state=streak))
+    assert streak == {"last_action": "evolve", "count": 1}
+
+
+def test_one_decision_streak_resets_on_wait(monkeypatch) -> None:
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "5")
+
+    state = _make_state()
+    agent = _make_agent(state=state)
+    provider = _make_provider({"action": "wait", "params": {}})
+
+    streak = {"last_action": "place_cells", "count": 4}
+    asyncio.run(mod._one_decision(agent, provider, None, streak_state=streak))
+    assert streak == {"last_action": None, "count": 0}
+
+
+def test_one_decision_streak_resets_on_failed_action(monkeypatch) -> None:
+    mod = _import_or_skip()
+    monkeypatch.setenv("PET_FORCE_EXPLORE_AFTER_N", "5")
+
+    state = _make_state(field_ids=[("f1", 1)])
+    agent = _make_agent(state=state, act_success=False)
+    provider = _make_provider(
+        {"action": "place_cells", "params": {"field_id": "f1", "preset": "block"}}
+    )
+
+    streak = {"last_action": "place_cells", "count": 3}
+    asyncio.run(mod._one_decision(agent, provider, None, streak_state=streak))
+    assert streak == {"last_action": None, "count": 0}
+
+
 if __name__ == "__main__":
     test_one_decision_executes_action()
     test_one_decision_wait_skips_act()
