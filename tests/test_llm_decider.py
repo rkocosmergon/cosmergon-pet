@@ -368,6 +368,44 @@ def test_build_system_prompt_warrior_has_warrior_tone() -> None:
     assert "aggressive" in war and "aggressive" not in sci
 
 
+def test_build_system_prompt_examples_are_persona_specific() -> None:
+    """S162 P1-FAIL-Diagnose: hard-coded examples zeigten NUR
+    place_cells/evolve/wait — bei 3B-LLM überstimmten sie die
+    abstrakte conditional sequence (Comet-hand 99% place_cells trotz
+    scientist-Pfad-5 für create_field). Examples sind jetzt persona-
+    spezifisch und decken die Top-Pfade jeder Persona ab.
+    """
+    mod = _import_or_skip()
+    sci = mod._build_system_prompt("scientist", "S")
+    war = mod._build_system_prompt("warrior", "W")
+    trd = mod._build_system_prompt("trader", "T")
+    exp = mod._build_system_prompt("expansionist", "E")
+    # scientist examples must demonstrate create_field (Pfad 5) — the
+    # bug we fixed: previously no example mentioned create_field at all.
+    assert "create_field" in sci
+    # trader examples must demonstrate market_buy (Pfad 1) and market_list (Pfad 2)
+    assert "market_buy" in trd
+    assert "market_list" in trd
+    # expansionist examples must demonstrate create_field (Pfad 1, flagship)
+    assert "create_field" in exp and "flagship" in exp
+    # warrior examples must demonstrate place_cells with low-cell-count gap
+    assert "place_cells" in war
+    # All persona examples include the new Pfad-N-Verweis
+    assert "Pfad" in sci
+    assert "Pfad" in war
+
+
+def test_build_system_prompt_unknown_persona_uses_fallback_examples() -> None:
+    """Unknown persona falls back to scientist (not generic) — scientist
+    examples themselves serve as the fallback because the dict-lookup
+    falls back to scientist guidance entirely.
+    """
+    mod = _import_or_skip()
+    pr = mod._build_system_prompt("hermit", "X")
+    # Scientist's create_field example must appear (= scientist fallback active)
+    assert "create_field" in pr
+
+
 def test_one_decision_passes_persona_aware_prompt_to_provider() -> None:
     """The system prompt the provider sees must reflect the agent's persona,
     not a generic one — this is what made NPCs act and the Pet wait.

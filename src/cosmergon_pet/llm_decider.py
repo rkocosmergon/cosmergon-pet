@@ -104,6 +104,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - ELSE IF a place_cells line is offered: pick the line with the FEWEST live cells.\n"
             "  - ELSE: pick wait."
         ),
+        "examples": (
+            "  Energy 1.5M, an evolve line for tier-2 field is offered:\n"
+            "    → pick the evolve line (Pfad 1, prime move).\n"
+            "  Energy 800k, no evolve, no market_buy under 2000 E, market_list line offered:\n"
+            "    → pick a market_list line (Pfad 4, publish surplus).\n"
+            "  Energy 50k, no evolve, no affordable market_buy, create_field line offered:\n"
+            "    → pick a create_field line (Pfad 5, new experiment)."
+        ),
     },
     "warrior": {
         "tone": (
@@ -121,6 +129,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "pick market_buy — buy yourself an edge.\n"
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait."
+        ),
+        "examples": (
+            "  A field with only 12 cells offers a place_cells line:\n"
+            "    → pick that place_cells line (Pfad 1, close the gap).\n"
+            "  All fields full (>30 cells), an evolve line is offered:\n"
+            "    → pick the evolve line (Pfad 2, doubles output).\n"
+            "  All fields full, no evolve, energy 30k, create_field line offered:\n"
+            "    → pick a create_field line (Pfad 3, claim territory)."
         ),
     },
     "diplomat": {
@@ -140,6 +156,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait."
         ),
+        "examples": (
+            "  Energy 800, place_cells line with cheapest preset offered:\n"
+            "    → pick that place_cells line (Pfad 1, sustain mode).\n"
+            "  Energy 50k, market_buy line under 1500 E offered:\n"
+            "    → pick the market_buy line (Pfad 2, goodwill trade).\n"
+            "  Energy 100k, no cheap market_buy, market_list line offered:\n"
+            "    → pick a market_list line (Pfad 3, relationship-building)."
+        ),
     },
     "farmer": {
         "tone": (
@@ -158,6 +182,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - IF a create_field line is offered AND energy >= 10000: pick create_field.\n"
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait — farmer is patient, accumulation over action."
+        ),
+        "examples": (
+            "  A field with 30 cells (under 50 threshold), place_cells line offered:\n"
+            "    → pick that place_cells line (Pfad 1, top up).\n"
+            "  All fields full (>50 cells), energy 80k, market_list line offered:\n"
+            "    → pick a market_list line (Pfad 2, sell surplus).\n"
+            "  All fields full, no market_list, evolve line offered:\n"
+            "    → pick the evolve line (Pfad 3, harvest upgrade)."
         ),
     },
     "expansionist": {
@@ -179,6 +211,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait."
         ),
+        "examples": (
+            "  Energy 20k, a create_field line is offered:\n"
+            "    → pick the create_field line (Pfad 1, flagship move).\n"
+            "  Energy 1M, no create_field offered, market_buy line under 2000 E offered:\n"
+            "    → pick the market_buy line (Pfad 2, cheap acquisition).\n"
+            "  All cubes full, place_cells line for field with 12 cells offered:\n"
+            "    → pick that place_cells line (Pfad 3, bootstrap)."
+        ),
     },
     "trader": {
         "tone": (
@@ -196,6 +236,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - IF a create_field line is offered AND energy >= 10000: pick create_field.\n"
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait."
+        ),
+        "examples": (
+            "  Energy 100k, market_buy line at 8000 E (= 8% of energy, under 10%) offered:\n"
+            "    → pick the market_buy line (Pfad 1, primary move).\n"
+            "  Energy 50k, no cheap market_buy, market_list line offered:\n"
+            "    → pick a market_list line (Pfad 2, monetise inventory).\n"
+            "  Energy 500, place_cells with cheapest preset offered:\n"
+            "    → pick that place_cells line (Pfad 3, keep base alive)."
         ),
     },
 }
@@ -218,6 +266,7 @@ def _build_system_prompt(persona_type: str, agent_name: str) -> str:
     guidance = _PERSONA_GUIDANCE.get(persona_type) or _PERSONA_GUIDANCE[_DEFAULT_PERSONA]
     name = agent_name or "an autonomous agent"
     persona_label = persona_type or _DEFAULT_PERSONA
+    examples = guidance.get("examples") or _FALLBACK_EXAMPLES
     return f"""You are {name}, a {persona_label}-persona agent in Cosmergon —
 a Conway's Game of Life economy. Every ~60 seconds you take a turn.
 
@@ -239,14 +288,24 @@ How to answer:
   for character, including all UUIDs. Output ONLY that JSON, nothing else.
   No markdown fences. No comments. No newly-built objects.
 
-Decision examples:
-  Energy is healthy and at least one place_cells line is offered:
-    → pick the place_cells line for the field with the FEWEST live cells.
-  An evolve line is offered for a mature field:
-    → pick the evolve line.
+Decision examples (your persona's typical patterns):
+{examples}
   Only "wait" is in the list (no growth moves possible):
     → pick the wait line.
 """
+
+
+# Fallback used only if a persona's `examples` key is missing — e.g. if
+# a future persona is added without examples. Kept generic so we never
+# render a broken prompt. S162 P1-FAIL-Diagnose: hard-coded examples for
+# place_cells/evolve previously biased Comet-hand to 99% place_cells even
+# when scientist-Pfad-5 (create_field) should have fired.
+_FALLBACK_EXAMPLES: str = (
+    "  Energy is healthy and at least one growth-move line is offered:\n"
+    "    → pick the line that matches the FIRST condition in your sequence.\n"
+    "  No growth-move offered:\n"
+    "    → pick the place_cells line for the field with the FEWEST live cells."
+)
 
 
 _FALLBACK_AFFORDABLE_PRESETS: tuple[str, ...] = ("block", "blinker")
