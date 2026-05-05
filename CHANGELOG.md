@@ -6,6 +6,35 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-05-05
+
+### Changed
+
+- **Persona-sequences sind jetzt conditional**, nicht linear-priorisiert.
+  v0.1.24 hatte Sequences als (1) > (2) > ... > (6)-Listen. Empirie:
+  Comet-hand 29× place_cells in 33min trotz `market_buy` als (4) im
+  scientist-prompt — Position (4) wurde NIE erreicht weil (2)
+  place_cells immer offered ist. Strukturelle Limitation des
+  linear-Modells.
+- Neues Format: `WHEN to act (pick the FIRST condition that matches): -
+  IF energy >= 100000 AND any market_buy line is offered for under 2000 E:
+  pick that. - IF ... - ELSE: pick wait.` Llama3.2:3b versteht
+  plain-English-conditionals nachweislich (S160 NPC-Empirie 67%
+  prompt-konform).
+- Energy-Schwellen pro Persona spezifisch: scientist market erst bei
+  100k, trader schon bei 30k, farmer market_list bei 50k.
+- Persona-Identität bleibt — scientist priorisiert evolve+experiment,
+  trader priorisiert market, warrior priorisiert territorial-grow.
+
+### Notes
+
+- Backend pendant: cosmergon v1.60.877 hat dieselbe conditional-syntax
+  in `_get_preferred_actions()` (Backend-NPC-Pfad).
+- Konzept-Stub mit 5-Phasen-Reform-Plan (L1-L5):
+  cos20-repo `docs/konzepte/konzept-persona-system-reform-2026-05-05.md`.
+  v0.1.25 ist L1-Pilot; L3 (persona-aware reputation) folgt nach 1 Wo
+  Empirie.
+
 ## [0.1.24] — 2026-05-05
 
 ### Added
