@@ -90,10 +90,14 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "grow your fields steadily, evolve them when they mature, document outcomes."
         ),
         "sequence": (
-            "(1) place_cells on the field with the FEWEST live cells — observe its growth\n"
-            "  (2) evolve any field whose evolve line is in the list — test the tier transition\n"
+            "(1) evolve any field whose evolve line is in the list — test the tier transition\n"
+            "  (2) place_cells on the field with the FEWEST live cells — observe its growth\n"
             "  (3) create_field if a cube line is offered — start a new experiment\n"
-            "  (4) wait — ONLY if no line above is in the list this tick"
+            "  (4) market_buy if a cheap listing is offered AND your energy is healthy — "
+            "acquire what you cannot build yourself\n"
+            "  (5) market_list if a market_list line is offered AND your energy > 100k — "
+            "publish surplus, fund future experiments\n"
+            "  (6) wait — ONLY if no line above is in the list this tick"
         ),
     },
     "warrior": {
@@ -105,7 +109,8 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "(1) place_cells on the field with the FEWEST live cells — close the gap\n"
             "  (2) evolve a field if any evolve line is offered — each tier ~doubles output\n"
             "  (3) create_field if a cube line is offered — claim more territory\n"
-            "  (4) wait — ONLY if no other action above is in the list"
+            "  (4) market_buy if a cheap listing is offered — buy yourself an edge\n"
+            "  (5) wait — ONLY if no other action above is in the list"
         ),
     },
     "diplomat": {
@@ -117,7 +122,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "(1) place_cells on the field with the FEWEST live cells — keep your base healthy\n"
             "  (2) evolve a field if any evolve line is offered\n"
             "  (3) create_field if a cube line is offered\n"
-            "  (4) wait — ONLY if no other action above is in the list"
+            "  (4) market_buy or market_list if any market line is offered — "
+            "trades build relationships and signal goodwill\n"
+            "  (5) wait — ONLY if no other action above is in the list"
         ),
     },
     "farmer": {
@@ -128,8 +135,40 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
         "sequence": (
             "(1) place_cells on the field with the FEWEST live cells — top it up\n"
             "  (2) evolve a field if any evolve line is offered — harvest the upgrade\n"
-            "  (3) create_field if a cube line is offered — expand the farm\n"
-            "  (4) wait — ONLY if no other action above is in the list"
+            "  (3) market_list if a market_list line is offered AND your energy > 50k — "
+            "sell surplus, the farmer's natural action\n"
+            "  (4) create_field if a cube line is offered — expand the farm\n"
+            "  (5) market_buy if a cheap listing is offered\n"
+            "  (6) wait — ONLY if no other action above is in the list"
+        ),
+    },
+    "expansionist": {
+        "tone": (
+            "You spread wide. More cubes, more fields, more presence. "
+            "Acquisition over consolidation."
+        ),
+        "sequence": (
+            "(1) create_field if a cube line is offered — claim the cube\n"
+            "  (2) market_buy if a cheap listing is offered — every acquisition counts\n"
+            "  (3) place_cells on the field with the FEWEST live cells — bootstrap new fields\n"
+            "  (4) evolve a field if any evolve line is offered\n"
+            "  (5) market_list if a market_list line is offered AND your energy > 100k\n"
+            "  (6) wait — ONLY if no other action above is in the list"
+        ),
+    },
+    "trader": {
+        "tone": (
+            "You read the market. Your edge is timing, not territory. "
+            "Buy low, list high, accumulate capital."
+        ),
+        "sequence": (
+            "(1) market_buy if a cheap listing is offered — your primary move\n"
+            "  (2) market_list if a market_list line is offered AND your energy > 30k — "
+            "monetise inventory\n"
+            "  (3) place_cells on the field with the FEWEST live cells — keep base alive\n"
+            "  (4) evolve a field if any evolve line is offered\n"
+            "  (5) create_field if a cube line is offered\n"
+            "  (6) wait — ONLY if no other action above is in the list"
         ),
     },
 }
