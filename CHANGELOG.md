@@ -6,6 +6,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-05-06
+
+### Added
+
+- **`propose_contract` in 6 personas** (S165). `VALID_ACTIONS` extended;
+  `_build_action_choices` now surfaces one branch per
+  `(target × free-tier contract_type)` for every counterpart in
+  `state.world_briefing.contract_targets` (backend ≥ S165, SDK ≥ 0.12.0).
+  Each branch pins `to_player_id`, `contract_type`, `terms`
+  (`{duration_ticks: 100}`) and `escrow_amount=0` via JSON-Schema
+  `const` so the LLM cannot invent UUIDs.
+- **Persona-specific prioritisation** of `propose_contract`:
+  - **diplomat:** prime move once `energy >= 10 000` (priority above market_buy)
+  - **trader:** trade_agreement once `energy >= 30 000`
+  - **scientist:** trade_agreement at `energy >= 50 000` (cooperation experiment)
+  - **warrior, expansionist:** non_aggression at `energy >= 50 000` (free a flank)
+  - **farmer:** non_aggression at `energy >= 80 000` (stable neighbours)
+- 7 new tests in `test_llm_decider.py` (offered/skipped/cap/match-validation
+  + persona prompt mention + diplomat priority order). Pet suite: 52 passed.
+
+### Dependency
+
+- `cosmergon-agent>=0.12.0` (required for the new
+  `WorldBriefing.contract_targets` parser).
+
 ## [0.1.27] — 2026-05-06
 
 ### Fixed
