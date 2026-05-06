@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Versioned pre-commit hook (S163 — keine .git/hooks/pre-commit-Install-Pflicht
+# pro Klon mehr nötig). Spiegelt .pre-commit-config.yaml — Cosmergon-Pet wird
+# vor jedem Commit gegen Ruff/Whitelist/etc. geprüft, exakt wie das CI-Ruleset.
+#
+# Aktivieren (einmalig pro Klon — wird durch scripts/setup-hooks.sh automatisiert):
+#   git config core.hooksPath scripts/git-hooks
+#
+# Voraussetzung: pre-commit-Tool installiert (pipx install pre-commit).
+# Bypass NICHT erlaubt: kein --no-verify (S163).
+#
+# Pattern-Quelle: ~/projekte/cos20/scripts/git-hooks/pre-commit (S158).
+
+set -e
+
+if ! command -v pre-commit >/dev/null 2>&1; then
+    echo "ERROR: pre-commit-Tool nicht installiert." >&2
+    echo "Fix: pipx install pre-commit  (oder pip install --break-system-packages --user pre-commit)" >&2
+    exit 1
+fi
+
+exec pre-commit run --hook-stage pre-commit
