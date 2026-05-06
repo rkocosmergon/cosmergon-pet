@@ -40,6 +40,7 @@ from pathlib import Path
 
 # Pet + SDK must be importable. `pip install -e .` in both repos.
 from cosmergon_agent.state import GameState  # type: ignore
+
 from cosmergon_pet.llm.ollama import OllamaProvider  # type: ignore
 from cosmergon_pet.llm_decider import (  # type: ignore
     VALID_ACTIONS,
@@ -198,7 +199,7 @@ async def main(args: argparse.Namespace) -> int:
             outcomes[entry["validation_outcome"]] += 1
             elapsed_samples.append(entry["decided_in_seconds"])
             print(
-                f"  run {i+1:2d}/{args.runs}: {entry['action']:<20s} "
+                f"  run {i + 1:2d}/{args.runs}: {entry['action']:<20s} "
                 f"outcome={entry['validation_outcome']:<14s} "
                 f"in {entry['decided_in_seconds']:.1f}s",
                 file=sys.stderr,
@@ -206,7 +207,7 @@ async def main(args: argparse.Namespace) -> int:
 
     print("\n=== Action-Distribution ===", file=sys.stderr)
     for action, count in actions.most_common():
-        print(f"  {action:<20s} {count:3d} ({count*100//args.runs}%)", file=sys.stderr)
+        print(f"  {action:<20s} {count:3d} ({count * 100 // args.runs}%)", file=sys.stderr)
     print("\n=== Validation-Outcome ===", file=sys.stderr)
     for outcome, count in outcomes.most_common():
         print(f"  {outcome:<20s} {count:3d}", file=sys.stderr)

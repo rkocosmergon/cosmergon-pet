@@ -570,9 +570,7 @@ async def _one_decision(
             action,
             sorted(VALID_ACTIONS),
         )
-        _maybe_dump_decision_outcome(
-            agent, provider, action, params, "disallowed", False, elapsed
-        )
+        _maybe_dump_decision_outcome(agent, provider, action, params, "disallowed", False, elapsed)
         if on_decision is not None:
             on_decision("(disallowed)", {}, elapsed, False)
         return
@@ -589,9 +587,7 @@ async def _one_decision(
             action,
             _redact_params(params),
         )
-        _maybe_dump_decision_outcome(
-            agent, provider, action, params, "off_list", False, elapsed
-        )
+        _maybe_dump_decision_outcome(agent, provider, action, params, "off_list", False, elapsed)
         if on_decision is not None:
             on_decision("(off_list)", {}, elapsed, False)
         return
