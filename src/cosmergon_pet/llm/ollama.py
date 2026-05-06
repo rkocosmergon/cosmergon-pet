@@ -46,6 +46,12 @@ class OllamaProvider:
         )
         self.model = model or os.environ.get("PET_LLM_OLLAMA_MODEL", "llama3.2:3b")
         self.timeout_s = timeout_s
+        # Diagnostic-only: last raw model output before parse.
+        # Read by llm_decider._maybe_dump_decision_outcome when
+        # COSMERGON_PET_DECISION_DUMP_PATH is set. Never read by the
+        # decision loop itself — it would couple the diagnosis path
+        # to gameplay. S163 A.2 setup.
+        self.last_raw_response: str | None = None
 
     @property
     def model_string(self) -> str:
@@ -83,6 +89,10 @@ class OllamaProvider:
             raise LLMProviderError(f"ollama http error: {e}") from e
 
         raw_response = payload.get("response", "")
+        # Stash before any parse / validation work so the diagnostic dump
+        # can read the model's verbatim output even when JSON parsing
+        # fails downstream.
+        self.last_raw_response = raw_response
         if not raw_response:
             raise LLMProviderError("ollama returned empty response field")
 

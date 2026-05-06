@@ -471,6 +471,7 @@ def test_maybe_dump_prompt_writes_jsonl_when_env_set(monkeypatch, tmp_path) -> N
 
     entry = _json.loads(lines[0])
     assert set(entry.keys()) == {
+        "phase",
         "timestamp",
         "agent_id",
         "system_prompt",
@@ -478,6 +479,7 @@ def test_maybe_dump_prompt_writes_jsonl_when_env_set(monkeypatch, tmp_path) -> N
         "world",
         "schema",
     }
+    assert entry["phase"] == "input"
     assert entry["agent_id"] == "abc-123"
     assert entry["system_prompt"] == "you are warrior"
     assert entry["schema"] == {"oneOf": [{"const": {"action": "wait"}}]}

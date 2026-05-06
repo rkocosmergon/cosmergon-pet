@@ -393,6 +393,7 @@ def _maybe_dump_prompt(
         dump_path.parent.mkdir(parents=True, exist_ok=True)
         agent_id = getattr(agent.state, "agent_id", None) or getattr(agent.state, "id", None)
         entry = {
+            "phase": "input",
             "timestamp": time.time(),
             "agent_id": str(agent_id) if agent_id else "",
             "system_prompt": system_prompt,
@@ -404,6 +405,61 @@ def _maybe_dump_prompt(
             f.write(json.dumps(entry, default=str) + "\n")
     except Exception:
         logger.warning("prompt-dump failed", exc_info=True)
+
+
+def _maybe_dump_decision_outcome(
+    agent: CosmergonAgent,
+    provider: LLMProvider,
+    action: str,
+    params: dict[str, Any],
+    validation_outcome: str,
+    success: bool | None,
+    decided_in_seconds: float,
+) -> None:
+    """Optional diagnostic: dump decision outcome (S163 A.2 Methoden-Pflicht).
+
+    Companion to ``_maybe_dump_prompt``. Same JSONL file, same env var.
+    Each pre/outcome pair correlates by timestamp order (input first,
+    then outcome).
+
+    Captures the verbatim model output (``provider.last_raw_response``,
+    if the provider exposes it) plus the validation path the action took:
+      ``parsed``        — parsed JSON, before any validation
+      ``disallowed``    — action not in VALID_ACTIONS
+      ``off_list``      — action+params not in offered choices
+      ``wait``          — model chose to wait
+      ``agent_act_ok``  — backend accepted the action
+      ``agent_act_fail``— backend rejected the action
+      ``provider_error``— provider raised before returning a decision
+
+    Off by default. Activated only when the env var is set. Failures
+    are logged at WARNING and swallowed — diagnosis must not affect
+    the decision loop.
+    """
+    dump_path_str = os.environ.get(_DUMP_ENV_VAR)
+    if not dump_path_str:
+        return
+    try:
+        dump_path = Path(dump_path_str)
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        agent_id = getattr(agent.state, "agent_id", None) or getattr(agent.state, "id", None)
+        raw_response = getattr(provider, "last_raw_response", None)
+        entry = {
+            "phase": "outcome",
+            "timestamp": time.time(),
+            "agent_id": str(agent_id) if agent_id else "",
+            "action": action,
+            "params": _redact_params(params) if params else {},
+            "validation_outcome": validation_outcome,
+            "success": success,
+            "decided_in_seconds": round(decided_in_seconds, 3),
+            "raw_response": raw_response,
+            "provider_model": getattr(provider, "model_string", str(provider)),
+        }
+        with dump_path.open("a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except Exception:
+        logger.warning("decision-outcome-dump failed", exc_info=True)
 
 
 async def _maybe_reflect(
@@ -493,9 +549,13 @@ async def _one_decision(
     try:
         decision = await provider.decide(system_prompt, memory, world, schema=schema)
     except LLMProviderError as e:
+        elapsed = time.monotonic() - t0
         logger.warning("provider %s failed: %s", provider.name, e)
+        _maybe_dump_decision_outcome(
+            agent, provider, "(provider_error)", {}, "provider_error", False, elapsed
+        )
         if on_decision is not None:
-            on_decision("(provider_error)", {}, time.monotonic() - t0, False)
+            on_decision("(provider_error)", {}, elapsed, False)
         return
 
     elapsed = time.monotonic() - t0
@@ -509,6 +569,9 @@ async def _one_decision(
             "llm emitted disallowed action %r — dropped (allowed: %s)",
             action,
             sorted(VALID_ACTIONS),
+        )
+        _maybe_dump_decision_outcome(
+            agent, provider, action, params, "disallowed", False, elapsed
         )
         if on_decision is not None:
             on_decision("(disallowed)", {}, elapsed, False)
@@ -526,12 +589,16 @@ async def _one_decision(
             action,
             _redact_params(params),
         )
+        _maybe_dump_decision_outcome(
+            agent, provider, action, params, "off_list", False, elapsed
+        )
         if on_decision is not None:
             on_decision("(off_list)", {}, elapsed, False)
         return
 
     if action == "wait":
         logger.info("llm chose wait (%.1fs)", elapsed)
+        _maybe_dump_decision_outcome(agent, provider, "wait", {}, "wait", True, elapsed)
         if on_decision is not None:
             on_decision("wait", {}, elapsed, True)
         return
@@ -547,6 +614,15 @@ async def _one_decision(
         "llm action=%s params=%s success=%s decided_in=%.1fs",
         action,
         _redact_params(params),
+        success,
+        elapsed,
+    )
+    _maybe_dump_decision_outcome(
+        agent,
+        provider,
+        action,
+        params,
+        "agent_act_ok" if success else "agent_act_fail",
         success,
         elapsed,
     )
