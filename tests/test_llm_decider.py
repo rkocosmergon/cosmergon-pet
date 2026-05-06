@@ -30,9 +30,18 @@ def _import_or_skip() -> Any:
     return mod
 
 
+_TIER_REQUIRED_TYPE_DEFAULT: dict[int, str] = {
+    1: "oscillator",  # T1 → T2 needs oscillator
+    2: "spaceship",  # T2 → T3 needs spaceship
+    3: "gun",  # T3 → T4 needs gun
+    4: "breeder",  # T4 → T5 needs breeder
+    5: "breeder",  # T5 max — evolve blocked anyway by tier>=5 short-circuit
+}
+
+
 def _make_state(
     *,
-    energy: float = 1000.0,
+    energy: float = 1_000_000.0,
     field_ids: list[tuple[str, int]] | None = None,
     cube_ids: list[str] | None = None,
     universe_cube_ids: list[str] | None = None,
@@ -45,6 +54,14 @@ def _make_state(
     via state.universe_cubes; defaults to cube_ids when not given).
     The returned mock matches the SDK GameState attribute shape used by
     `_build_action_choices` and `_format_world`.
+
+    Defaults for evolve-eligibility are deliberately *generous*: every
+    field is reife-saturated (100 000) and gets the entity_type the
+    backend requires for `next_tier=tier+1`. Plus energy=1 000 000 covers
+    every EVOLUTION_ENERGY_COST. Tests that need to verify the
+    can-evolve filter (S164: reife / entity_type / energy gates)
+    override these per-field via `_set_field` or use the
+    `_make_field`/`_state_with_fields` builders below.
     """
     state = MagicMock()
     state.energy = energy
@@ -54,7 +71,8 @@ def _make_state(
         f.id = fid
         f.entity_tier = tier
         f.active_cell_count = 3
-        f.reife_score = 100
+        f.reife_score = 100_000
+        f.entity_type = _TIER_REQUIRED_TYPE_DEFAULT.get(tier, "oscillator")
         state.fields.append(f)
     state.cubes = []
     for cid in cube_ids or []:
@@ -173,15 +191,16 @@ def test_format_world_renders_fields() -> None:
     """World-block contains energy + every field id + tier annotation."""
     mod = _import_or_skip()
     state = _make_state(
-        energy=1234,
+        energy=1_000_000,  # cover EVOLUTION_ENERGY_COST gate (S164)
         field_ids=[("field-1", 2), ("field-2", 1)],
     )
     out = mod._format_world(state)
-    assert "1234" in out
+    assert "1000000" in out or "1,000,000" in out  # energy printed
     assert "field-1" in out
     assert "field-2" in out
-    # New rendering: evolve rows tag tier as "(current tier=N)"
-    assert "tier=2" in out
+    # evolve rows tag tier transition as "T{tier}->T{next_tier}" (S164)
+    assert "T2->T3" in out  # field-1 evolve eligibility
+    assert "T1->T2" in out  # field-2 evolve eligibility
 
 
 def test_format_world_no_fields_only_wait() -> None:
@@ -241,6 +260,60 @@ def test_format_world_evolve_only_for_tier_lt_5() -> None:
     evolve_lines = [line for line in out.splitlines() if "evolve" in line]
     assert any("low-t" in line for line in evolve_lines)
     assert not any("max-t" in line for line in evolve_lines)
+
+
+# S164 — H_NEXT verification: `_build_action_choices` must mirror backend
+# `_handle_evolve` (reife/entity_type/balance gates). Pre-S164 only the
+# tier gate was checked; backend rejected 30/30 evolve calls in 3h with
+# "Entity not mature enough" or "Pattern type does not match target tier".
+
+
+def test_evolve_filtered_by_reife_threshold() -> None:
+    """Field with reife_score below REIFE_THRESHOLDS[next_tier] → no evolve row.
+
+    REIFE_THRESHOLDS[3]=500. T2 field with reife=100 must not be offered.
+    """
+    mod = _import_or_skip()
+    state = _make_state(field_ids=[("not-mature", 2)])
+    state.fields[0].reife_score = 100  # below T3 threshold 500
+    out = mod._format_world(state)
+    evolve_lines = [line for line in out.splitlines() if "evolve" in line]
+    assert not any("not-mature" in line for line in evolve_lines)
+
+
+def test_evolve_filtered_by_entity_type_mismatch() -> None:
+    """T1 still_life cannot evolve to T2 (T2 requires oscillator) → no evolve row."""
+    mod = _import_or_skip()
+    state = _make_state(field_ids=[("wrong-type", 1)])
+    state.fields[0].entity_type = "still_life"  # T2 requires oscillator
+    state.fields[0].reife_score = 1_000  # safely over T2 threshold
+    out = mod._format_world(state)
+    evolve_lines = [line for line in out.splitlines() if "evolve" in line]
+    assert not any("wrong-type" in line for line in evolve_lines)
+
+
+def test_evolve_filtered_by_insufficient_balance() -> None:
+    """Balance below EVOLUTION_ENERGY_COST[tier] → no evolve row.
+
+    EVOLUTION_ENERGY_COST[2]=5000. T2 field with energy=100 must not be offered
+    (cost is paid at tier=current, not next_tier).
+    """
+    mod = _import_or_skip()
+    state = _make_state(energy=100, field_ids=[("poor", 2)])
+    out = mod._format_world(state)
+    evolve_lines = [line for line in out.splitlines() if "evolve" in line]
+    assert not any("poor" in line for line in evolve_lines)
+
+
+def test_evolve_offered_when_all_filters_pass() -> None:
+    """Defense in depth: state with full eligibility produces an evolve row."""
+    mod = _import_or_skip()
+    state = _make_state(field_ids=[("eligible", 2)])
+    # _make_state defaults already give reife=100 000, type=spaceship,
+    # energy=1 000 000 — all gates pass.
+    out = mod._format_world(state)
+    evolve_lines = [line for line in out.splitlines() if "evolve" in line]
+    assert any("eligible" in line for line in evolve_lines)
 
 
 def test_one_decision_drops_off_list_uuid() -> None:
