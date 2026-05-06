@@ -44,6 +44,7 @@ from typing import Any
 
 from cosmergon_agent import CosmergonAgent
 
+from .face import EVOLUTION_ENERGY_COST, REIFE_THRESHOLDS, TIER_REQUIRED_TYPE
 from .llm import LLMProvider, LLMProviderError
 
 logger = logging.getLogger(__name__)
@@ -720,19 +721,39 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                 )
             )
 
-    # evolve: one row per field that *could* level up (T1..T4)
+    # evolve: one row per field that meets ALL backend can-evolve criteria.
+    # Mirrors `face.py::_find_evolvable_field` / backend
+    # `agent_game._handle_evolve` (tier, reife, entity_type, balance).
+    # Conservative — does NOT consider `field.field_metadata.max_tier_paid`
+    # (free re-evolution after devolve, S111-fix). Effect: Pet may skip
+    # offering an evolve choice that would actually be free; it never
+    # offers a choice the backend would reject. Symptoms when filters were
+    # missing (S163/S164 empirie): 30/30 backend-400 with "Entity not
+    # mature enough" or "Pattern type does not match target tier".
+    balance = float(getattr(state, "energy", 0) or 0)
     for f in fields:
         fid = getattr(f, "id", None)
-        tier = getattr(f, "entity_tier", None)
-        if fid and isinstance(tier, int) and 1 <= tier < 5:
-            fid_str = str(fid)
-            choices.append(
-                _make_choice(
-                    "evolve",
-                    {"field_id": fid_str},
-                    f"evolve        field_id={fid_str}  (current tier={tier})",
-                )
+        tier = getattr(f, "entity_tier", None) or 0
+        if not fid or not isinstance(tier, int) or tier <= 0 or tier >= 5:
+            continue
+        next_tier = tier + 1
+        reife = getattr(f, "reife_score", None) or 0
+        if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
+            continue
+        required_type = TIER_REQUIRED_TYPE.get(next_tier)
+        if required_type and getattr(f, "entity_type", None) != required_type:
+            continue
+        cost = EVOLUTION_ENERGY_COST.get(tier, 0)
+        if balance < cost:
+            continue
+        fid_str = str(fid)
+        choices.append(
+            _make_choice(
+                "evolve",
+                {"field_id": fid_str},
+                f"evolve        field_id={fid_str}  (T{tier}->T{next_tier}, cost={cost} E)",
             )
+        )
 
     # create_field: every cube in the universe is fair game — Cosmergon's
     # backend allows any agent to add a field to any cube (cube ownership is

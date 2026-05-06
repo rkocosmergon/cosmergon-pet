@@ -6,6 +6,79 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-05-06
+
+### Fixed
+
+- **`_build_action_choices` evolve-filter mirrors backend `_handle_evolve`
+  fully.** Previously only `entity_tier in 1..4` was checked. The three
+  additional gates (`reife_score`, `entity_type`, `balance`) were missing,
+  so Pet offered evolve choices the backend rejected with HTTP 400. S164
+  empirie on Comet-hand: 30/30 evolve calls in 3h failed with "Entity
+  not mature enough" (28×) or "Pattern type does not match target tier"
+  (2×). Pet's `_PERSONA_GUIDANCE` for scientist has Pfad-1 = evolve, so
+  the LLM picked evolve deterministically on every cycle while the
+  backend rejected every call. Direct verification with Comet-hand's real
+  10-field snapshot: pre-patch `_build_action_choices` produced 6 evolve
+  choices for 6 T1 fields, post-patch 0 (all six legitimately filtered:
+  reife<100 or type=still_life when next_tier requires oscillator).
+- **`__version__` drift fixed**: `__init__.py` was stuck at `0.1.18`
+  while `pyproject.toml` had advanced through `0.1.26`. Both now in sync
+  at `0.1.27`.
+
+### Changed
+
+- `_build_action_choices` evolve-row label now reads
+  `evolve field_id=… (T{tier}->T{next_tier}, cost={cost} E)` instead of
+  `… (current tier=N)`. Gives the LLM both the source and target tier
+  plus the energy cost — informative for persona-sequence decisions
+  ("scientist Pfad-1 evolve when offered" no longer fires blindly when
+  cost would have failed).
+
+### Why this matters
+
+Comet-hand spent 3+ hours of S164-Vormittag spam-evolving fields the
+backend rejected (~10 evolve attempts/hour, 100% failure rate, no Pet
+self-learning because reflection-loop runs at lower frequency). LLM-level
+fixes (schema mode v0.1.16, persona prompt v0.1.17, conditional
+sequences v0.1.25, persona examples v0.1.26) couldn't break the loop
+because Pet was offering an objectively un-takeable choice. The fix
+moves the eligibility check to where it belongs: choice-construction,
+not LLM persuasion.
+
+### Tests
+
+- Four new tests in `test_llm_decider.py` (analog face.py
+  `_find_evolvable_field`):
+  - `test_evolve_filtered_by_reife_threshold`
+  - `test_evolve_filtered_by_entity_type_mismatch`
+  - `test_evolve_filtered_by_insufficient_balance`
+  - `test_evolve_offered_when_all_filters_pass`
+- `_make_state` defaults updated so that all pre-existing tests stay
+  green: `energy=1_000_000` (covers EVOLUTION_ENERGY_COST gate),
+  `reife_score=100_000` (covers REIFE_THRESHOLDS gate), `entity_type`
+  derived per tier from `_TIER_REQUIRED_TYPE_DEFAULT` (covers
+  TIER_REQUIRED_TYPE gate). 45/45 Pet tests pass (pre-patch was 41/41).
+
+### Pre-registered prediction (24h post-deploy)
+
+- 0 backend-400 with "Entity not mature enough" or "Pattern type does
+  not match target tier" for Comet-hand. Falsified if ≥1 → filter bug
+  or timing race between Pet-state-snapshot and backend-state.
+
+## [0.1.26] — 2026-05-05
+
+### Added
+
+- **Persona-specific decision examples** in `_build_system_prompt`. Each
+  persona now demonstrates its top-3 sequence paths via concrete
+  examples (scientist: evolve / market_list / create_field; trader:
+  market_buy / market_list / place_cells; etc.). v0.1.25 conditional
+  sequences alone were not enough to break Comet-hand's 100% place_cells
+  bias (S162 4-iteration empirie). NB: empirically still ineffective on
+  Comet-hand — the deeper root cause was the missing evolve filters,
+  fixed in v0.1.27.
+
 ## [0.1.25] — 2026-05-05
 
 ### Changed
