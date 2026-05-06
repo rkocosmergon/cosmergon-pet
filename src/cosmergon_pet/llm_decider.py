@@ -61,6 +61,7 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "transfer_energy",
         "market_list",
         "market_buy",
+        "propose_contract",
         "wait",
     }
 )
@@ -83,6 +84,28 @@ _SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
     }
 )
 
+# S165: Free-tier-allowed contract types. Backend (`agent_game.py
+# ::_FREE_CONTRACT_TYPES`) rejects others with HTTP 402. Keep in sync.
+# Developer/Enterprise tiers may also propose `tribute` and `alliance`
+# but the Pet targets Maker (Free) usage, so we surface only the safe set.
+_FREE_CONTRACT_TYPES: tuple[str, ...] = ("non_aggression", "trade_agreement")
+
+# Default terms per contract type. Backend requires the field but accepts
+# any JSON object whose shape matches the contract semantics. We use a
+# conservative duration so a misclick doesn't lock the agent for long.
+_CONTRACT_TERM_TEMPLATES: dict[str, dict[str, Any]] = {
+    "non_aggression": {"duration_ticks": 100},
+    "trade_agreement": {"duration_ticks": 100},
+}
+
+# Minimum balance before propose_contract is offered. Below this the
+# agent is in sustain mode and a contract commitment is premature.
+_PROPOSE_CONTRACT_MIN_BALANCE: float = 5_000.0
+
+# Max counterparts surfaced per tick — keeps the schema small for 3B-LLMs
+# even if backend ever raises the briefing cap above 5.
+_PROPOSE_CONTRACT_MAX_TARGETS: int = 5
+
 
 _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
     "scientist": {
@@ -100,6 +123,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "Sustain mode — DO NOT market_buy here.\n"
             "  - IF energy >= 100000 AND a market_list line is offered: "
             "pick a market_list line — publish surplus, fund future experiments.\n"
+            "  - IF energy >= 50000 AND a propose_contract line with "
+            "type=trade_agreement is offered: pick that propose_contract line "
+            "— controlled cooperation experiment.\n"
             "  - IF energy >= 30000 AND a create_field line is offered: "
             "pick create_field — start a new experiment.\n"
             "  - ELSE IF a place_cells line is offered: pick the line with the FEWEST live cells.\n"
@@ -110,8 +136,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "    → pick the evolve line (Pfad 1, prime move).\n"
             "  Energy 800k, no evolve, no market_buy under 2000 E, market_list line offered:\n"
             "    → pick a market_list line (Pfad 4, publish surplus).\n"
-            "  Energy 50k, no evolve, no affordable market_buy, create_field line offered:\n"
-            "    → pick a create_field line (Pfad 5, new experiment)."
+            "  Energy 80k, no evolve/market_buy/market_list, "
+            "propose_contract trade_agreement offered:\n"
+            "    → pick that propose_contract line (Pfad 5, cooperation experiment)."
         ),
     },
     "warrior": {
@@ -128,6 +155,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "pick create_field — claim more territory.\n"
             "  - IF a market_buy line is offered for under 2000 E: "
             "pick market_buy — buy yourself an edge.\n"
+            "  - IF energy >= 50000 AND a propose_contract line with "
+            "type=non_aggression is offered: pick that propose_contract line "
+            "— buy peace on one flank, free up forces.\n"
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait."
         ),
@@ -137,7 +167,10 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  All fields full (>30 cells), an evolve line is offered:\n"
             "    → pick the evolve line (Pfad 2, doubles output).\n"
             "  All fields full, no evolve, energy 30k, create_field line offered:\n"
-            "    → pick a create_field line (Pfad 3, claim territory)."
+            "    → pick a create_field line (Pfad 3, claim territory).\n"
+            "  Fields full, no evolve/create/buy, energy 80k, "
+            "propose_contract non_aggression offered:\n"
+            "    → pick that propose_contract line (Pfad 5, secure flank)."
         ),
     },
     "diplomat": {
@@ -148,6 +181,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
         "sequence": (
             "WHEN to act (pick the FIRST condition that matches):\n"
             "  - IF energy < 1000: pick place_cells (cheapest preset). Sustain mode.\n"
+            "  - IF energy >= 10000 AND any propose_contract line is offered: "
+            "pick a propose_contract line — relationships are the diplomat's prime move. "
+            "Prefer non_aggression to stabilise neighbours, trade_agreement to bind partners.\n"
             "  - IF a market_buy line is offered for under 1500 E: pick market_buy. "
             "Quiet trades signal goodwill.\n"
             "  - IF a market_list line is offered AND energy >= 30000: "
@@ -160,10 +196,10 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
         "examples": (
             "  Energy 800, place_cells line with cheapest preset offered:\n"
             "    → pick that place_cells line (Pfad 1, sustain mode).\n"
-            "  Energy 50k, market_buy line under 1500 E offered:\n"
-            "    → pick the market_buy line (Pfad 2, goodwill trade).\n"
-            "  Energy 100k, no cheap market_buy, market_list line offered:\n"
-            "    → pick a market_list line (Pfad 3, relationship-building)."
+            "  Energy 30k, propose_contract non_aggression offered:\n"
+            "    → pick that propose_contract line (Pfad 2, prime move).\n"
+            "  Energy 50k, no contract offered, market_buy line under 1500 E offered:\n"
+            "    → pick the market_buy line (Pfad 3, goodwill trade)."
         ),
     },
     "farmer": {
@@ -180,6 +216,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - IF any evolve line is offered: pick evolve — harvest the upgrade.\n"
             "  - IF a market_buy line is offered for under 500 E: "
             "pick market_buy. Cheap blueprint.\n"
+            "  - IF energy >= 80000 AND a propose_contract line with "
+            "type=non_aggression is offered: pick that propose_contract line "
+            "— stable neighbours protect a long harvest.\n"
             "  - IF a create_field line is offered AND energy >= 10000: pick create_field.\n"
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
             "  - ELSE: pick wait — farmer is patient, accumulation over action."
@@ -190,7 +229,10 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  All fields full (>50 cells), energy 80k, market_list line offered:\n"
             "    → pick a market_list line (Pfad 2, sell surplus).\n"
             "  All fields full, no market_list, evolve line offered:\n"
-            "    → pick the evolve line (Pfad 3, harvest upgrade)."
+            "    → pick the evolve line (Pfad 3, harvest upgrade).\n"
+            "  All fields full, energy 100k, no market/evolve, "
+            "propose_contract non_aggression offered:\n"
+            "    → pick that propose_contract line (Pfad 5, stable neighbour)."
         ),
     },
     "expansionist": {
@@ -207,6 +249,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  - IF any place_cells line is offered AND that field has < 30 cells: "
             "pick place_cells — bootstrap new fields.\n"
             "  - IF any evolve line is offered: pick evolve.\n"
+            "  - IF energy >= 50000 AND a propose_contract line with "
+            "type=non_aggression is offered: pick that propose_contract line "
+            "— clear a flank, expansion needs an open road.\n"
             "  - IF a market_list line is offered AND energy >= 100000: "
             "pick market_list. Fund expansion.\n"
             "  - ELSE IF a place_cells line is offered: pick place_cells (FEWEST cells).\n"
@@ -218,7 +263,10 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "  Energy 1M, no create_field offered, market_buy line under 2000 E offered:\n"
             "    → pick the market_buy line (Pfad 2, cheap acquisition).\n"
             "  All cubes full, place_cells line for field with 12 cells offered:\n"
-            "    → pick that place_cells line (Pfad 3, bootstrap)."
+            "    → pick that place_cells line (Pfad 3, bootstrap).\n"
+            "  No create/market_buy/place_cells, energy 70k, "
+            "propose_contract non_aggression offered:\n"
+            "    → pick that propose_contract line (Pfad 5, clear a flank)."
         ),
     },
     "trader": {
@@ -232,6 +280,9 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "pick the cheapest market_buy — trader's primary move.\n"
             "  - IF a market_list line is offered AND energy >= 30000: "
             "pick market_list — monetise inventory.\n"
+            "  - IF energy >= 30000 AND a propose_contract line with "
+            "type=trade_agreement is offered: pick that propose_contract line "
+            "— locking in regular flow is trader's specialty.\n"
             "  - IF energy < 1000: pick place_cells (cheapest preset). Keep base alive.\n"
             "  - IF any evolve line is offered: pick evolve.\n"
             "  - IF a create_field line is offered AND energy >= 10000: pick create_field.\n"
@@ -243,8 +294,11 @@ _PERSONA_GUIDANCE: dict[str, dict[str, Any]] = {
             "    → pick the market_buy line (Pfad 1, primary move).\n"
             "  Energy 50k, no cheap market_buy, market_list line offered:\n"
             "    → pick a market_list line (Pfad 2, monetise inventory).\n"
+            "  Energy 50k, no market_buy, no market_list, "
+            "propose_contract trade_agreement offered:\n"
+            "    → pick that propose_contract line (Pfad 3, lock in flow).\n"
             "  Energy 500, place_cells with cheapest preset offered:\n"
-            "    → pick that place_cells line (Pfad 3, keep base alive)."
+            "    → pick that place_cells line (Pfad 4, keep base alive)."
         ),
     },
 }
@@ -813,6 +867,36 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                 f"market_buy    listing_id={listing_id}  ({item_type} for {price:.0f} E)",
             )
         )
+
+    # propose_contract: one branch per (target × free-tier contract_type).
+    # Uses state.world_briefing.contract_targets from backend ≥ S165 — the
+    # to_player_id goes in as a const, so the LLM cannot invent UUIDs.
+    # Gated on a minimum balance so a sustain-mode agent doesn't enter
+    # commitments. Backend `_FREE_CONTRACT_TYPES` is the source of truth
+    # for which types Free agents may propose; we mirror it in
+    # `_FREE_CONTRACT_TYPES` (above) and keep them in sync.
+    targets = list(getattr(wb, "contract_targets", ()) or []) if wb is not None else []
+    if energy >= _PROPOSE_CONTRACT_MIN_BALANCE and targets:
+        for target in targets[:_PROPOSE_CONTRACT_MAX_TARGETS]:
+            tid = getattr(target, "player_id", None)
+            tname = getattr(target, "username", "?") or "?"
+            if not tid:
+                continue
+            tid_str = str(tid)
+            for ctype in _FREE_CONTRACT_TYPES:
+                terms = dict(_CONTRACT_TERM_TEMPLATES[ctype])
+                choices.append(
+                    _make_choice(
+                        "propose_contract",
+                        {
+                            "to_player_id": tid_str,
+                            "contract_type": ctype,
+                            "terms": terms,
+                            "escrow_amount": 0,
+                        },
+                        f"propose_contract  to={tname}  type={ctype}",
+                    )
+                )
 
     choices.append(_make_choice("wait", {}, "wait"))
     return choices

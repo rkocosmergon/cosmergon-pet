@@ -316,6 +316,129 @@ def test_evolve_offered_when_all_filters_pass() -> None:
     assert any("eligible" in line for line in evolve_lines)
 
 
+# S165 — propose_contract surfacing. Added to VALID_ACTIONS + persona
+# sequences with conditional path. Choices are gated on:
+#   - state.world_briefing.contract_targets (backend ≥ S165)
+#   - energy >= _PROPOSE_CONTRACT_MIN_BALANCE (5 000 E)
+# Free-tier types only: non_aggression, trade_agreement.
+
+
+def _add_contract_targets(
+    state: MagicMock,
+    targets: list[tuple[str, str, str | None]],
+) -> None:
+    """Attach a contract_targets list to state.world_briefing.
+
+    Each target is (player_id, username, persona_or_None).
+    """
+    target_objs = []
+    for tid, name, persona in targets:
+        t = MagicMock()
+        t.player_id = tid
+        t.username = name
+        t.persona = persona
+        target_objs.append(t)
+    state.world_briefing.contract_targets = target_objs
+
+
+def test_propose_contract_offered_when_balance_and_targets() -> None:
+    """Balance >= 5000 + at least one target → one branch per (target × free-type)."""
+    mod = _import_or_skip()
+    state = _make_state(energy=10_000, field_ids=[("f1", 1)])
+    _add_contract_targets(state, [("p1", "Aldous", "scientist")])
+
+    choices = mod._build_action_choices(state)
+    pc = [c for c in choices if c["action"] == "propose_contract"]
+    # 2 free-tier types × 1 target = 2 branches
+    assert len(pc) == 2
+    types = {c["params"]["contract_type"] for c in pc}
+    assert types == {"non_aggression", "trade_agreement"}
+    # Every branch has the target id pinned + escrow=0 + terms-template
+    for c in pc:
+        assert c["params"]["to_player_id"] == "p1"
+        assert c["params"]["escrow_amount"] == 0
+        assert c["params"]["terms"] == {"duration_ticks": 100}
+        assert "Aldous" in c["label"]
+
+
+def test_propose_contract_skipped_below_min_balance() -> None:
+    """Balance below 5 000 E (sustain mode) → no propose_contract row even with targets."""
+    mod = _import_or_skip()
+    state = _make_state(energy=1_000, field_ids=[("f1", 1)])
+    _add_contract_targets(state, [("p1", "Aldous", "scientist")])
+
+    choices = mod._build_action_choices(state)
+    pc = [c for c in choices if c["action"] == "propose_contract"]
+    assert pc == []
+
+
+def test_propose_contract_skipped_when_no_targets() -> None:
+    """Empty contract_targets list (older backend or quiet world) → no row."""
+    mod = _import_or_skip()
+    state = _make_state(energy=100_000, field_ids=[("f1", 1)])
+    state.world_briefing.contract_targets = []
+
+    choices = mod._build_action_choices(state)
+    pc = [c for c in choices if c["action"] == "propose_contract"]
+    assert pc == []
+
+
+def test_propose_contract_capped_at_max_targets() -> None:
+    """More than _PROPOSE_CONTRACT_MAX_TARGETS counterparts → capped, schema stays small."""
+    mod = _import_or_skip()
+    state = _make_state(energy=100_000, field_ids=[("f1", 1)])
+    many = [(f"p{i}", f"Agent{i}", "trader") for i in range(20)]
+    _add_contract_targets(state, many)
+
+    choices = mod._build_action_choices(state)
+    pc = [c for c in choices if c["action"] == "propose_contract"]
+    # cap × 2 free-tier types
+    assert len(pc) == mod._PROPOSE_CONTRACT_MAX_TARGETS * 2
+
+
+def test_propose_contract_in_choices_validates_match() -> None:
+    """`_is_action_in_choices` must accept the exact (action, params)
+    triple from a propose_contract branch — otherwise the schema-mode
+    decision would be dropped as off-list.
+    """
+    mod = _import_or_skip()
+    state = _make_state(energy=10_000, field_ids=[("f1", 1)])
+    _add_contract_targets(state, [("p1", "Aldous", "scientist")])
+
+    choices = mod._build_action_choices(state)
+    pc = [c for c in choices if c["action"] == "propose_contract"]
+    assert pc, "guard: propose_contract must be offered for this test"
+    sample = pc[0]
+    assert mod._is_action_in_choices(sample["action"], sample["params"], choices)
+
+
+def test_personas_mention_propose_contract() -> None:
+    """Each of the 6 personas must mention propose_contract conditionally
+    in its sequence — this is the L1-pattern extension that lets the
+    LLM ever pick the action when offered.
+    """
+    mod = _import_or_skip()
+    for persona in ("scientist", "warrior", "diplomat", "farmer", "expansionist", "trader"):
+        prompt = mod._build_system_prompt(persona, f"{persona}-bot")
+        assert "propose_contract" in prompt, (
+            f"{persona} sequence missing propose_contract conditional"
+        )
+
+
+def test_diplomat_propose_contract_priority_over_market() -> None:
+    """Diplomat is the persona where propose_contract is the prime move
+    once balance allows. The conditional MUST appear in the prompt
+    BEFORE the market_buy line — otherwise the LLM keeps falling
+    through to market actions first.
+    """
+    mod = _import_or_skip()
+    prompt = mod._build_system_prompt("diplomat", "D")
+    pc_idx = prompt.find("propose_contract")
+    mb_idx = prompt.find("market_buy")
+    assert pc_idx > 0 and mb_idx > 0
+    assert pc_idx < mb_idx, "diplomat must list propose_contract before market_buy"
+
+
 def test_one_decision_drops_off_list_uuid() -> None:
     """LLM hallucinates a field_id not in the offered list → dropped locally."""
     mod = _import_or_skip()
@@ -381,6 +504,7 @@ def test_valid_actions_set_unchanged() -> None:
         "transfer_energy",
         "market_list",
         "market_buy",
+        "propose_contract",
         "wait",
     }
     assert mod.VALID_ACTIONS == expected
