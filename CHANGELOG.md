@@ -6,6 +6,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.31] — 2026-05-07
+
+### Changed
+
+- **Re-vendored TreeDecider v1.1.0 → v1.1.1** — Anti-Hoarding cube-cap
+  on `market_buy` (S170-Live-Befund: comet-hand kaufte 12+ cheap blueprints
+  in Folge ohne sie einzusetzen, weil scientist[1] permanent matched).
+  All personas now require `len(state.universe_cubes) < 5` before
+  `market_buy` triggers. Once cap reached, the tree falls through to the
+  next branch (typically `create_field`), which uses cubes up.
+
 ## [0.1.30] — 2026-05-07
 
 ### Changed

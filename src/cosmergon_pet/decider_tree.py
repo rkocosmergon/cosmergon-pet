@@ -1,12 +1,19 @@
 """TreeDecider — rule-based decision tree, deterministic, no inference.
 
-VENDORED from ``cosmergon-decider-tree`` v1.1.0 (private cosmergon repo,
+VENDORED from ``cosmergon-decider-tree`` v1.1.1 (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``). Source-of-truth lives there.
 This copy lets the Pet stay installable from a single
 ``pip install cosmergon-pet`` without an additional dep that has its own
 release cadence. When the upstream changes, copy the file again and
 bump the Pet's MINOR version. Pure-Python rule logic, no model file, no
 inference — vendoring is cheap.
+
+v1.1.1 changes (vs. v1.1.0 in Pet 0.1.30):
+  - Anti-Hoarding cube-cap on market_buy. S170-finding: comet-hand kept
+    buying cheap blueprints permanently because the scientist[1] branch
+    matched constantly at rich-state. Cap=5 unused cubes now blocks
+    further market_buy in all personas, falling through to the next
+    branch (typically create_field), which uses cubes up.
 
 v1.1.0 changes (vs. v1.0.0 in Pet 0.1.29):
   - Pattern-Tier-aware preset selection (scientist/expansionist/farmer
@@ -83,6 +90,23 @@ def _own_fields_count(state: GameState) -> int:
 def _has_universe_cube(state: GameState) -> bool:
     cubes = list(getattr(state, "universe_cubes", []) or [])
     return len(cubes) > 0
+
+
+def _cube_count(state: GameState) -> int:
+    return len(list(getattr(state, "universe_cubes", []) or []))
+
+
+# v1.1.1 — Anti-Hoarding cap auf market_buy.
+# S170-Befund (comet-hand): scientist matched permanent market_buy weil Branch [1]
+# konstant True ist bei rich-state + cheap blueprints. Pet sammelte 12+ cubes ohne
+# sie einzusetzen. Cap=5 ungenutzte cubes triggert die nachfolgenden Branches
+# (create_field / market_list / propose_contract) — Pet wechselt zu Diversifikation.
+MARKET_BUY_CUBE_CAP = 5
+
+
+def _can_keep_buying_cubes(state: GameState) -> bool:
+    """True wenn Pet noch unter dem Cube-Hoarding-Cap ist."""
+    return _cube_count(state) < MARKET_BUY_CUBE_CAP
 
 
 def _has_evolvable_field(state: GameState) -> bool:
@@ -391,9 +415,13 @@ BASE_TREE: list[Branch] = [
         lambda s: _energy(s) >= 30_000 and _has_universe_cube(s),
         _act_create_field,
     ),
-    # 6. Energy >= 100k AND cheap listing → market_buy
+    # 6. Energy >= 100k AND cheap listing AND under cube-cap → market_buy
     (
-        lambda s: _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) is not None,
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, 2_000) is not None
+            and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(2_000),
     ),
     # 7. Energy >= 1500 → market_list (mid price-tier)
@@ -442,7 +470,12 @@ def _persona_tree(persona_branches: list[Branch]) -> list[Branch]:
 SCIENTIST_BRANCHES: list[Branch] = [
     # scientist: evolve > create_field > market_buy_blueprint > market_list_publish
     (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000), _act_market_buy_under(2_000)),
+    (
+        lambda s: (
+            _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) and _can_keep_buying_cubes(s)
+        ),
+        _act_market_buy_under(2_000),
+    ),
     (lambda s: _energy(s) >= 30_000 and _has_universe_cube(s), _act_create_field),
     (lambda s: _energy(s) >= 100_000 and _market_list_offered(s, 100_000), _act_market_list(450)),
     (
@@ -456,7 +489,12 @@ WARRIOR_BRANCHES: list[Branch] = [
     (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (lambda s: _energy(s) >= 5_000 and _has_universe_cube(s), _act_create_field),
-    (lambda s: _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000), _act_market_buy_under(2_000)),
+    (
+        lambda s: (
+            _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) and _can_keep_buying_cubes(s)
+        ),
+        _act_market_buy_under(2_000),
+    ),
     (
         lambda s: _energy(s) >= 50_000 and _contract_target(s) is not None,
         _act_propose_non_aggression,
@@ -466,7 +504,12 @@ WARRIOR_BRANCHES: list[Branch] = [
 EXPANSIONIST_BRANCHES: list[Branch] = [
     # expansionist: create_field maximal > market_buy cheap_acquisition > place_cells bootstrap > evolve
     (lambda s: _energy(s) >= 5_000 and _has_universe_cube(s), _act_create_field),
-    (lambda s: _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000), _act_market_buy_under(2_000)),
+    (
+        lambda s: (
+            _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) and _can_keep_buying_cubes(s)
+        ),
+        _act_market_buy_under(2_000),
+    ),
     (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (
@@ -477,8 +520,14 @@ EXPANSIONIST_BRANCHES: list[Branch] = [
 
 TRADER_BRANCHES: list[Branch] = [
     # trader: market_buy primary > market_list monetise > evolve > create_field
+    # Trader has cube-cap too (auch Markt-Experten können Cubes nicht endlos
+    # horten ohne sie einzusetzen — sonst Liquiditäts-Problem ähnlich Bank-Run).
     (
-        lambda s: _energy(s) >= 100_000 and _cheapest_buyable(s, _energy(s) * 0.1),
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, _energy(s) * 0.1)
+            and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(1e9),
     ),
     (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
@@ -496,7 +545,10 @@ DIPLOMAT_BRANCHES: list[Branch] = [
         lambda s: _energy(s) >= 10_000 and _contract_target(s) is not None,
         _act_propose_non_aggression,
     ),
-    (lambda s: _cheapest_buyable(s, 1_500), _act_market_buy_under(1_500)),
+    (
+        lambda s: _cheapest_buyable(s, 1_500) and _can_keep_buying_cubes(s),
+        _act_market_buy_under(1_500),
+    ),
     (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (lambda s: _energy(s) >= 5_000 and _has_universe_cube(s), _act_create_field),
@@ -507,7 +559,10 @@ FARMER_BRANCHES: list[Branch] = [
     (lambda s: _any_field_below_cells(s, 50) is not None, _act_place_cells_fewest),
     (lambda s: _market_list_offered(s, 50_000), _act_market_list(450)),
     (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _cheapest_buyable(s, 500), _act_market_buy_under(500)),
+    (
+        lambda s: _cheapest_buyable(s, 500) and _can_keep_buying_cubes(s),
+        _act_market_buy_under(500),
+    ),
     (lambda s: _energy(s) >= 10_000 and _has_universe_cube(s), _act_create_field),
     (
         lambda s: _energy(s) >= 80_000 and _contract_target(s) is not None,
@@ -617,7 +672,7 @@ class TreeDecider:
     """Rule-based decision tree decider."""
 
     name: str = "tree"
-    version: str = "1.1.0"
+    version: str = "1.1.1"
 
     async def decide(self, state: GameState) -> tuple[str, dict[str, Any]]:
         persona = (getattr(state, "persona_type", None) or "scientist").lower()
