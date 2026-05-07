@@ -6,6 +6,33 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.29] — 2026-05-07
+
+### Added
+
+- **TreeDecider as autonomous-decision backend**, replacing the optional
+  Ollama dependency for offline / edge deployments. New CLI flag
+  `--with-tree-decider` switches the Pet's autonomous-decision loop from
+  the LLM-provider path to a deterministic, rule-based persona-tree.
+  Mutually exclusive with `--with-llm`. The tree mirrors the lab-cluster's
+  tree-lane (Pulsar-eye) and runs in microseconds with zero external
+  service dependency — Pet decides even when Ollama, network, or the
+  lab-cluster is unavailable.
+- Vendored `cosmergon_pet.decider_tree.TreeDecider` from the upstream
+  `cosmergon-decider-tree` v1.0.0. Pure-Python rule logic, no model file,
+  no inference. Sync policy documented in the module header.
+- `cosmergon_pet.tree_loop.tree_decision_loop` — drop-in alternative to
+  `llm_decision_loop` with the same lifecycle contract (stop-event,
+  on_decision callback, exception-swallowing). Logs latency in ms (vs.
+  the LLM path's seconds).
+
+### Changed
+
+- `run_pet()` accepts a new `tree_decider` parameter; raises if both
+  `llm_provider` and `tree_decider` are passed.
+- `__main__.py` `--with-llm` and `--with-tree-decider` are validated as
+  mutually exclusive at argparse time.
+
 ## [0.1.28] — 2026-05-06
 
 ### Added

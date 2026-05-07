@@ -1058,7 +1058,13 @@ async def run_pet(
     simulate: bool,
     llm_provider: Any | None = None,
     llm_interval_s: float = 60.0,
+    tree_decider: Any | None = None,
+    tree_interval_s: float = 60.0,
 ) -> None:
+    # Validate decider-backend selection BEFORE opening the agent — keeps the
+    # error message clean and avoids partial init.
+    if llm_provider is not None and tree_decider is not None:
+        raise ValueError("run_pet: `llm_provider` and `tree_decider` are mutually exclusive.")
     # `async with agent` opens the SDK's HTTP client. Without this, every
     # `_request()` call raises "Agent not connected. Call run() or use async
     # with." — which surfaces on the Pet's display as `! state: Agent not co`
@@ -1087,9 +1093,13 @@ async def run_pet(
         poll_decisions_task = asyncio.create_task(_poll_decisions(agent, ps, stop))
         draw_task = asyncio.create_task(_draw_loop(display, ps, stop))
 
-        # Optional LLM-driven decision loop. Runs alongside button-driven
-        # actions; user can still press the encoder for manual moves.
+        # Optional autonomous decision loop. Runs alongside button-driven
+        # actions; user can still press the encoder for manual moves. Two
+        # backends, mutually exclusive (caller picks one):
+        #   - `llm_provider` → ``llm_decision_loop`` (Ollama/OpenAI/...)
+        #   - `tree_decider` → ``tree_decision_loop`` (rule-based, no LLM)
         llm_task: asyncio.Task | None = None
+        tree_task: asyncio.Task | None = None
         if llm_provider is not None:
             from .llm_decider import llm_decision_loop
 
@@ -1112,6 +1122,28 @@ async def run_pet(
                     on_decision=_on_llm_decision,
                 )
             )
+        elif tree_decider is not None:
+            from .tree_loop import tree_decision_loop
+
+            def _on_tree_decision(action: str, params: dict, elapsed: float, success: bool) -> None:
+                ps.last_user_action = {
+                    "action": f"tree:{action}",
+                    "status": "ok" if success else "fail",
+                    "detail": f"{elapsed * 1000:.0f}ms",
+                    "ts": time.monotonic(),
+                }
+                ps.last_action_at = time.monotonic()
+                ps.last_action_label = f"tree {action}"
+
+            tree_task = asyncio.create_task(
+                tree_decision_loop(
+                    agent,
+                    tree_decider,
+                    interval_s=tree_interval_s,
+                    stop=stop,
+                    on_decision=_on_tree_decision,
+                )
+            )
 
         try:
             while not stop.is_set():
@@ -1125,6 +1157,8 @@ async def run_pet(
             tasks = [poll_state_task, poll_events_task, poll_decisions_task, draw_task]
             if llm_task is not None:
                 tasks.append(llm_task)
+            if tree_task is not None:
+                tasks.append(tree_task)
             for task in tasks:
                 task.cancel()
                 try:
@@ -1253,7 +1287,25 @@ def main() -> None:
         default=60.0,
         help="Seconds between LLM decisions (default: 60, matches Cosmergon tick).",
     )
+    parser.add_argument(
+        "--with-tree-decider",
+        action="store_true",
+        help=(
+            "Enable autonomous decisions via the rule-based TreeDecider "
+            "(no LLM, no Ollama, no model file — pure-Python persona-tree). "
+            "Mutually exclusive with --with-llm. Mirrors lab-cluster's tree-lane."
+        ),
+    )
+    parser.add_argument(
+        "--tree-interval-s",
+        type=float,
+        default=60.0,
+        help="Seconds between tree decisions (default: 60, matches Cosmergon tick).",
+    )
     args = parser.parse_args()
+
+    if args.with_llm is not None and args.with_tree_decider:
+        parser.error("--with-llm and --with-tree-decider are mutually exclusive.")
 
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.WARNING),
@@ -1265,6 +1317,7 @@ def main() -> None:
     agent = CosmergonAgent(api_key=api_key, base_url=base_url)
 
     llm_provider = None
+    tree_decider = None
     if args.with_llm is not None:
         from .llm import build_provider
 
@@ -1274,6 +1327,14 @@ def main() -> None:
             llm_provider.model_string,
             args.llm_interval_s,
         )
+    elif args.with_tree_decider:
+        from .decider_tree import TreeDecider
+
+        tree_decider = TreeDecider()
+        logging.getLogger(__name__).info(
+            "TreeDecider enabled (rule-based, interval %.1fs)",
+            args.tree_interval_s,
+        )
 
     try:
         asyncio.run(
@@ -1282,6 +1343,8 @@ def main() -> None:
                 simulate=args.simulate,
                 llm_provider=llm_provider,
                 llm_interval_s=args.llm_interval_s,
+                tree_decider=tree_decider,
+                tree_interval_s=args.tree_interval_s,
             )
         )
     except KeyboardInterrupt:

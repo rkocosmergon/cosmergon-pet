@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cosmergon-pet"
-version = "0.1.28"
+version = "0.1.29"
 description = "Physical AI pet for Cosmergon agents — Raspberry Pi + OLED + rotary encoder"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -61,3 +61,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 "scripts/generate-pet-guide.py" = ["E501"]
 "scripts/generate-wiring-svg.py" = ["E501"]
 "scripts/generate-social-preview.py" = ["E501"]
+# Vendored from cosmergon-decider-tree — keep identical to upstream so
+# `diff` against the source-of-truth stays trivial. Upstream has its own
+# ruff config that allows these patterns.
+"src/cosmergon_pet/decider_tree.py" = ["N806", "E501"]
