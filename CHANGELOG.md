@@ -6,6 +6,38 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.30] — 2026-05-07
+
+### Changed
+
+- **Re-vendored TreeDecider from cosmergon-decider-tree v1.0.0 → v1.1.0**.
+  Three behaviour upgrades (S170 findings):
+  - **Pattern-Tier-aware preset selection** — `place_cells` for empty fields
+    now picks `blinker` (T1-oscillator → evolve-fähig) for scientist /
+    expansionist / farmer personas, preserves `block` for warrior / trader /
+    diplomat. Previous v1.0.0 hardcoded `block` for everyone, which created
+    still-life dead-ends that could never evolve.
+  - **Persona-Branches now have priority over empty-field-Refill** —
+    survival-tunnel-vision fix. v1.0.0: empty_field always won over persona
+    branches → rich agents (4.5 M E + many fields + 1 empty) made
+    `place_cells` for many ticks before strategic actions could trigger.
+    v1.1.0: persona branches (market_list, propose_contract, create_field,
+    market_buy, evolve) match first when their energy thresholds (≥30 k to
+    ≥100 k) are met; empty-field-Refill becomes the fallback when no
+    persona-branch matches.
+  - **Compass-Modulation extended** with `grow`, `cooperate`, `attack`,
+    `explore` overrides (was: only `consolidate` + `defend`). Compass=None
+    remains the default for Pet — these only fire when the user
+    explicitly sets a compass-preset via SDK.
+
+### Notes
+
+- Pet vendoring header documents the v1.1.0 changes inline, so the file is
+  self-contained for Maker users reading the Pet repo without access to the
+  upstream decider-tree source.
+- Cluster's `Pulsar-eye` lab-lane runs the same upstream — both reflect the
+  same behaviour change in the next benchmark cycle.
+
 ## [0.1.29] — 2026-05-07
 
 ### Added

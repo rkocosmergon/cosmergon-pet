@@ -1,12 +1,19 @@
 """TreeDecider — rule-based decision tree, deterministic, no inference.
 
-VENDORED from ``cosmergon-decider-tree`` v1.0.0 (private cosmergon repo,
+VENDORED from ``cosmergon-decider-tree`` v1.1.0 (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``). Source-of-truth lives there.
 This copy lets the Pet stay installable from a single
 ``pip install cosmergon-pet`` without an additional dep that has its own
 release cadence. When the upstream changes, copy the file again and
 bump the Pet's MINOR version. Pure-Python rule logic, no model file, no
 inference — vendoring is cheap.
+
+v1.1.0 changes (vs. v1.0.0 in Pet 0.1.29):
+  - Pattern-Tier-aware preset selection (scientist/expansionist/farmer
+    pick `blinker` for evolve-prep, others keep `block`)
+  - Persona-Branches now have priority over empty_field-Refill (prevents
+    rich-state survival tunnel-vision — comet-hand S170 finding)
+  - Compass-Modulation extended (grow / cooperate / attack / explore)
 
 Quelle:
   - docs/konzepte/konzept-default-entscheidungsbaum-api-agents.md §3
@@ -146,7 +153,13 @@ def _fewest_cells_field(state: GameState) -> Any | None:
 
 
 def _affordable_preset(state: GameState) -> str:
-    """Cheapest preset the agent can afford; 'block' as default."""
+    """Cheapest preset the agent can afford; 'block' as default.
+
+    Legacy v1.0.0-Behavior: always returns the most-expensive affordable preset
+    (counter-intuitive; the for-loop walks ascending and overwrites). Kept for
+    BASE_TREE-fallback compatibility. New code should use
+    `_persona_preferred_preset(state, persona)` for evolve-aware selection.
+    """
     energy = _energy(state)
     presets = [
         ("block", 5),
@@ -161,6 +174,55 @@ def _affordable_preset(state: GameState) -> str:
         else:
             break
     return cheapest if "cheapest" in dir() else "block"
+
+
+# v1.1.0 — Pattern-Tier-aware preset selection.
+#
+# Backend evolve-Mechanik (entity_tiers.py + decider_tree-Mirror REIFE_THRESHOLDS):
+#   T1 → T2  needs entity_type=oscillator  (cost 1k)
+#   T2 → T3  needs entity_type=spaceship   (cost 5k)
+#   T3 → T4  needs entity_type=gun         (cost 25k)
+#   T4 → T5  needs entity_type=breeder     (cost 125k)
+#
+# block (still_life) ist eine evolve-Sackgasse — der Pattern bleibt T1 für immer.
+# blinker/toad sind T1-oscillator → können T1→T2 evolve.
+# glider ist T1-spaceship → könnte T1→T2 evolve aber Backend will oscillator
+# für T2, also wird Greedy auf glider gespart bis spätere Tier-Stufe.
+#
+# Persona-Map:
+#   evolve-fokus (scientist, expansionist, farmer): blinker für oscillator-Pfad
+#   non-evolve-fokus (warrior, trader, diplomat): block bleibt — billig,
+#     für Markt/Kampf reicht still_life als territoriale Markierung.
+PERSONA_PREFERRED_PRESETS: dict[str, str] = {
+    "scientist": "blinker",
+    "expansionist": "blinker",
+    "farmer": "blinker",
+    "warrior": "block",
+    "trader": "block",
+    "diplomat": "block",
+}
+
+_PRESET_COST: dict[str, int] = {
+    "block": 5,
+    "blinker": 10,
+    "toad": 50,
+    "glider": 200,
+    "r_pentomino": 200,
+}
+
+
+def _persona_preferred_preset(state: GameState) -> str:
+    """Pattern-Tier-aware preset selection (v1.1.0).
+
+    Wählt das preset basierend auf persona-strategie + affordability.
+    Fallback auf "block" wenn der bevorzugte preset nicht erschwinglich ist.
+    """
+    persona = (getattr(state, "persona_type", None) or "scientist").lower()
+    preferred = PERSONA_PREFERRED_PRESETS.get(persona, "block")
+    energy = _energy(state)
+    if energy >= _PRESET_COST.get(preferred, 5):
+        return preferred
+    return "block"
 
 
 def _any_field_below_cells(state: GameState, threshold: int) -> Any | None:
@@ -205,14 +267,21 @@ def _act_place_cells_fewest(state: GameState) -> tuple[str, dict[str, Any]]:
     f = _fewest_cells_field(state)
     if f is None:
         return ("wait", {})
-    return ("place_cells", {"field_id": str(f.id), "preset": _affordable_preset(state)})
+    return ("place_cells", {"field_id": str(f.id), "preset": _persona_preferred_preset(state)})
 
 
 def _act_place_cells_empty(state: GameState) -> tuple[str, dict[str, Any]]:
+    """v1.1.0: persona-aware preset (was hardcoded `block`).
+
+    scientist/expansionist/farmer get oscillator-pattern (`blinker`) so the
+    field becomes T1-oscillator and qualifies for T1→T2 evolve once reife
+    crosses 100. warrior/trader/diplomat keep `block` — they don't optimise
+    for evolve and care about cost minimisation per fill.
+    """
     f = _empty_field(state) or _fewest_cells_field(state)
     if f is None:
         return ("wait", {})
-    return ("place_cells", {"field_id": str(f.id), "preset": "block"})
+    return ("place_cells", {"field_id": str(f.id), "preset": _persona_preferred_preset(state)})
 
 
 def _act_evolve(state: GameState) -> tuple[str, dict[str, Any]]:
@@ -344,10 +413,30 @@ BASE_TREE: list[Branch] = [
 
 
 def _persona_tree(persona_branches: list[Branch]) -> list[Branch]:
-    """Persona-Branches kommen zwischen Survival und Wachstum-Default-Tree."""
-    survival = BASE_TREE[:3]  # critical-energy + 0-fields + empty-field
+    """Persona-Branches haben Vorrang über empty-field-Survival-Refill (v1.1.0).
+
+    Reihenfolge der Branches:
+      1. CRITICAL_ENERGY < 100 → wait (absoluter Sink-Schutz)
+      2. own_fields == 0 + can_afford → create_field (zero-state-bootstrap)
+      3. Persona-spezifische Strategien (evolve / market_buy / create_field /
+         market_list / propose_contract je nach Persona)
+      4. empty_field → place_cells (Refill-Survival, fällt durch wenn (3) matched)
+      5. fewest-cells → place_cells (Pflege-Fallback)
+      6. wait
+
+    v1.0.0 hatte (4) VOR (3) → reiche Agents (4.57 M E + viele Fields + ein
+    leeres Feld) machten endlos place_cells statt market_list / propose_contract /
+    create_field. Verifiziert S170 anhand comet-hand.
+
+    Begründung der neuen Reihenfolge: bei rich-state ist Refill nicht
+    rationaler als strategische Aktionen. Die Persona-Branches haben
+    Energy-Schwellen (>=30 k bis >=100 k), die bei armen Agents nicht
+    matchen — dort fällt der Tree natürlich auf empty_field zurück.
+    """
+    survival_critical = BASE_TREE[:2]  # critical-energy + 0-fields-create_field
+    empty_fallback = [BASE_TREE[2]]  # empty_field → place_cells
     fallback = BASE_TREE[7:]  # fewest-cells + wait
-    return survival + persona_branches + fallback
+    return survival_critical + persona_branches + empty_fallback + fallback
 
 
 SCIENTIST_BRANCHES: list[Branch] = [
@@ -446,32 +535,77 @@ def _compass_modulate(
     compass: str | None,
     state: GameState,
 ) -> tuple[str, dict[str, Any]]:
-    """Compass-Override: einzelne Aktionen können je nach Compass
-    nachgeführt werden. MVP: leichte Anpassungen, kein voll-blockierender
-    Override.
+    """Compass-Override: post-tree action-rewriting je nach Compass-Setting.
 
-    Konzept §3.3:
-      warrior+consolidate → eigene Felder bevorzugen → wenn create_field,
-        umstellen auf place_cells fewest
-      diplomat+defend → propose_contract non_aggression erzwingen
-      farmer+explore → create_field früher freischalten (heute kein
-        Override-Bedarf, fällt durch)
+    MVP-Philosophie: leichte Anpassungen, kein voll-blockierender Override —
+    der Tree bleibt die primäre Quelle, Compass tunet einzelne Resultate.
+
+    Konzept §3.3 + v1.1.0-Erweiterung:
+
+    +-------------+---------+--------------------------------------------------+
+    | Compass     | Wirkung | Beispiel                                         |
+    +-------------+---------+--------------------------------------------------+
+    | consolidate | Pflege  | create_field → place_cells (eigene Felder zuerst)|
+    | defend      | Schutz  | trade_agreement → non_aggression                 |
+    | grow        | Expand. | place_cells → create_field bei rich-state + cube |
+    | cooperate   | Verträge| place_cells → propose_contract bei target+energy |
+    | attack      | Offens. | place_cells preset → glider (Spaceship-Pattern)  |
+    | explore     | Markt   | create_field → market_buy bei cheap-blueprint    |
+    +-------------+---------+--------------------------------------------------+
+
+    Compass=None → no-op (Default für Pet, das kein Compass setzt).
     """
     if not compass:
         return action, params
 
+    # consolidate: bevorzuge eigene Felder pflegen statt neuen anlegen
     if action == "create_field" and compass == "consolidate":
-        # consolidate: bevorzuge eigene Felder pflegen statt neuen anlegen
         f = _fewest_cells_field(state)
         if f is not None:
-            return ("place_cells", {"field_id": str(f.id), "preset": _affordable_preset(state)})
+            return (
+                "place_cells",
+                {"field_id": str(f.id), "preset": _persona_preferred_preset(state)},
+            )
 
+    # defend: erzwinge non_aggression statt trade_agreement
     if action == "propose_contract" and compass == "defend":
-        # defend: erzwinge non_aggression
         if params.get("contract_type") == "trade_agreement":
             new_params = dict(params)
             new_params["contract_type"] = "non_aggression"
             return action, new_params
+
+    # v1.1.0 grow: bei place_cells umstellen auf create_field wenn rich + cube
+    if action == "place_cells" and compass == "grow":
+        if _energy(state) >= 50_000 and _has_universe_cube(state):
+            cubes = list(getattr(state, "universe_cubes", []) or [])
+            return ("create_field", {"cube_id": str(cubes[0].id)})
+
+    # v1.1.0 cooperate: bei place_cells umstellen auf propose_contract wenn target+energy
+    if action == "place_cells" and compass == "cooperate":
+        target = _contract_target(state)
+        if target is not None and _energy(state) >= 30_000:
+            return (
+                "propose_contract",
+                {
+                    "to_player_id": str(target.player_id),
+                    "contract_type": "trade_agreement",
+                    "terms": {"duration_ticks": 100},
+                    "escrow_amount": 0,
+                },
+            )
+
+    # v1.1.0 attack: place_cells-preset auf glider (T1-spaceship, offensiv)
+    if action == "place_cells" and compass == "attack":
+        new_params = dict(params)
+        if _energy(state) >= _PRESET_COST.get("glider", 200):
+            new_params["preset"] = "glider"
+        return action, new_params
+
+    # v1.1.0 explore: bei create_field umstellen auf market_buy wenn cheap-blueprint
+    if action == "create_field" and compass == "explore":
+        b = _cheapest_buyable(state, 2_000)
+        if b is not None:
+            return ("market_buy", {"listing_id": str(b.listing_id)})
 
     return action, params
 
@@ -483,7 +617,7 @@ class TreeDecider:
     """Rule-based decision tree decider."""
 
     name: str = "tree"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     async def decide(self, state: GameState) -> tuple[str, dict[str, Any]]:
         persona = (getattr(state, "persona_type", None) or "scientist").lower()
