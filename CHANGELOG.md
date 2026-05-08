@@ -6,6 +6,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.33] — 2026-05-08
+
+### Fixed
+
+- **`cosmergon_pet.__version__` string** was still `0.1.31` in 0.1.32 — the
+  pyproject.toml bump was applied but the hardcoded `__init__.py` constant
+  was missed. Cosmetic fix; no behaviour change. Skipped a destructive
+  re-tag of v0.1.32, applied a clean v0.1.33 instead.
+
 ## [0.1.32] — 2026-05-08
 
 ### Changed
