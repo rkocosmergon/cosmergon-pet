@@ -6,6 +6,57 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-08
+
+### Changed (BREAKING — Decider architecture replaced)
+
+- **Re-vendored TreeDecider v1.1.4 → v2.0.2 (GOBT pattern).** Major
+  architecture rewrite. The v1.x first-match-cascading tree was 4×
+  empirically found to produce mono-action patterns
+  (S170-hoarding, v1.1.2-race, v1.1.3-margin, v1.1.4-create_field-spree).
+  Reactive iteration patches (action-cap, frequency-limit) explicitly
+  rejected. v2.0.x uses GOBT (Goal-Oriented Behavior Tree, established
+  game-AI pattern since ~2024).
+- **Two-layer architecture:**
+  1. **Subsistenz** (universal): when energy < persona-specific threshold,
+     Pet earns energy via `place_cells` / `market_list` / `create_field`.
+  2. **Persona-Kern-Charakter** (individual): 6 personas with their own
+     life cycles, action pools, goal metrics, and bias maps:
+     - scientist: experiment → wait-for-reife → evolve → publish → acquire → collab
+     - trader: buy-low → sell-high → inventory-use → trade-agreements
+     - warrior: territory → defense → diplomatic-pacts → evolve
+     - expansionist: expand → minimal-fill → acquire
+     - diplomat: network → goodwill → mediator → maintain
+     - farmer: tend → evolve → sell-surplus
+- **Generic score function** with goal-metric argument (8 internal
+  predict_*_delta calculators).
+- **Direction-based scoring (v2.0.1)**: actions in the right direction
+  receive ≥0.7 score even at low magnitude — fixes Pulsar-eye-class
+  pattern where +3 cells / 403 fields was scored 0.0003 absolute.
+- **Bootstrap goal (v2.0.2)**: all personas at 0 fields use
+  `field_count_at_least=1` first, before any persona-specific cycle —
+  prevents cold-start where persona goal could not be reached without
+  a field.
+- **Persona-Bias additive** [-0.3, +0.3]. Goal logic dominant, persona
+  shapes as tiebreaker.
+- **Compass = additional bias modifier** [-0.2, +0.2].
+- **Anti-hoarding preserved (v1.1.4 heritage)**: PERSONA_BUYABLE_TYPES
+  filter on market_buy.
+- **Race-margin preserved (v1.1.3 heritage)**: 15% safety margin on
+  `_can_afford_field` against decide/execute Conway-tick drain.
+- **Catastrophe-recovery implicit**: Subsistenz-layer-switch triggers
+  automatically when Conway tick or Grey Plague lowers Pet energy.
+- **Stateless, deterministic, sub-millisecond, explainable**: no
+  action-history, no cycle counters, full decision trace via
+  (persona, layer, goal_metric, score) per cycle.
+- **NEW vendored file**: `src/cosmergon_pet/persona_profiles.py`
+  (constants for all 6 personas + subsistenz logic).
+
+### Concept
+
+Reference: `docs/konzepte/konzept-decider-tree-v2.md` in the private
+Cosmergon repo (5-voice panel + founder review 2026-05-08).
+
 ## [0.1.33] — 2026-05-08
 
 ### Fixed
