@@ -1,6 +1,6 @@
 """TreeDecider — rule-based decision tree, deterministic, no inference.
 
-VENDORED from ``cosmergon-decider-tree`` v1.1.1 (private cosmergon repo,
+VENDORED from ``cosmergon-decider-tree`` v1.1.4 (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``). Source-of-truth lives there.
 This copy lets the Pet stay installable from a single
 ``pip install cosmergon-pet`` without an additional dep that has its own
@@ -8,12 +8,21 @@ release cadence. When the upstream changes, copy the file again and
 bump the Pet's MINOR version. Pure-Python rule logic, no model file, no
 inference — vendoring is cheap.
 
+v1.1.4 changes (vs. v1.1.1 in Pet 0.1.31):
+  - item_type-Filter im market_buy-Branch (S171-Empirie: Comet-hand
+    97.5 % market_buy auf preset-Listings ohne Verwendung). Persona-
+    spezifisch: scientist/expansionist/farmer/warrior/diplomat kaufen
+    nur ("cube", "field"), trader darf alles.
+  - Energy-Budget-Branch via _can_afford_field mit 15 % Safety-Margin
+    gegen Decide/Execute-Race (next_cost × 1.15, fängt 1-2 Conway-Tick
+    Maintenance-Drains zwischen Decide+Execute ab).
+  - Beide Fixes ersetzen die statischen Energy-Schwellen in den 6
+    Persona-Create-Field-Branches (S168 hatte _can_afford_field nur
+    in BASE_TREE Branch-2 verbaut).
+
 v1.1.1 changes (vs. v1.1.0 in Pet 0.1.30):
-  - Anti-Hoarding cube-cap on market_buy. S170-finding: comet-hand kept
-    buying cheap blueprints permanently because the scientist[1] branch
-    matched constantly at rich-state. Cap=5 unused cubes now blocks
-    further market_buy in all personas, falling through to the next
-    branch (typically create_field), which uses cubes up.
+  - Anti-Hoarding cube-cap on market_buy. Cap=5 unused cubes blocks
+    further market_buy. (Greift nicht für Presets — siehe v1.1.4-Fix.)
 
 v1.1.0 changes (vs. v1.0.0 in Pet 0.1.29):
   - Pattern-Tier-aware preset selection (scientist/expansionist/farmer
@@ -256,15 +265,52 @@ def _any_field_below_cells(state: GameState, threshold: int) -> Any | None:
     return None
 
 
-def _cheapest_buyable(state: GameState, max_price: float) -> Any | None:
+# v1.1.4 — Persona-spezifische item_type-Filter im Markt-Lookup.
+# S171-Empirie (Comet-hand, Pet S170-LIVE): 97.5 % market_buy in 24h auf
+# preset-Listings (10-400 E billig, immer da). Branch-Bedingung
+# `_cheapest_buyable(s, 2_000)` und `_can_keep_buying_cubes` haben den
+# Hoarding-Modus nicht erkannt, weil Presets nicht in `state.universe_cubes`
+# wachsen → Cube-Cap greift nicht. Fix: Persona-Branches reichen explizit
+# erlaubte item_types durch. Trader darf alles, alle anderen nur cube/field
+# (Bau-Bauteile für Wachstum, keine ungenutzten Preset-Vorräte).
+PERSONA_BUYABLE_TYPES: dict[str, tuple[str, ...] | None] = {
+    "scientist": ("cube", "field"),
+    "expansionist": ("cube", "field"),
+    "farmer": ("cube", "field"),
+    "warrior": ("cube", "field"),
+    "diplomat": ("cube", "field"),
+    "trader": None,  # alle item_types erlaubt — Markt-Aktivität ist Trader-Kerngeschäft
+}
+
+
+def _cheapest_buyable(
+    state: GameState,
+    max_price: float,
+    *,
+    allowed_types: tuple[str, ...] | None = None,
+) -> Any | None:
+    """Cheapest buyable matching `allowed_types` (None = alle).
+
+    v1.1.4: Filter nach `b.item_type`. Wenn `allowed_types` nicht None,
+    werden nur Listings mit passendem `item_type` betrachtet. Listings ohne
+    item_type-Feld (alte SDK-Pfade) werden bei aktivem Filter übersprungen.
+    """
     wb = getattr(state, "world_briefing", None)
     market = getattr(wb, "market", None) if wb is not None else None
     buyable = list(getattr(market, "buyable", ()) or [])
     energy = _energy(state)
+
+    def _passes_type_filter(b: Any) -> bool:
+        if allowed_types is None:
+            return True
+        item_type = getattr(b, "item_type", None)
+        return item_type in allowed_types
+
     candidates = [
         b
         for b in buyable
-        if (getattr(b, "price_energy", 1e18) or 1e18) <= max_price
+        if _passes_type_filter(b)
+        and (getattr(b, "price_energy", 1e18) or 1e18) <= max_price
         and (getattr(b, "price_energy", 1e18) or 1e18) <= energy
     ]
     if not candidates:
@@ -322,9 +368,15 @@ def _act_create_field(state: GameState) -> tuple[str, dict[str, Any]]:
     return ("create_field", {"cube_id": str(cubes[0].id)})
 
 
-def _act_market_buy_under(price: float):
+def _act_market_buy_under(
+    price: float,
+    *,
+    allowed_types: tuple[str, ...] | None = None,
+):
+    """v1.1.4: Action erbt den Persona-spezifischen item_type-Filter."""
+
     def inner(state: GameState) -> tuple[str, dict[str, Any]]:
-        b = _cheapest_buyable(state, price)
+        b = _cheapest_buyable(state, price, allowed_types=allowed_types)
         if b is None:
             return ("wait", {})
         return ("market_buy", {"listing_id": str(b.listing_id)})
@@ -378,22 +430,45 @@ def _act_wait(state: GameState) -> tuple[str, dict[str, Any]]:
 CRITICAL_ENERGY = 100.0  # Sink-Schutz, Konzept §3.1
 
 
+# v1.1.3 — Safety-Margin gegen Decide/Execute-Race-Condition.
+# S171 T+3-Empirie (Pulsar-eye, 4/5 Fail nach v1.1.2): can_afford zur
+# Decide-Time war True (energy 200k > cost 187k), aber zwischen Decide
+# und Execute (90 s = 1.5 Conway-Ticks) drain Field-Maintenance die
+# Energy unter cost. Backend rejected mit "Insufficient energy: need
+# 187k, have 175k". v1.1.3 prüft gegen `next_cost * MARGIN` — das
+# 15-%-Polster fängt 1-2 Conway-Tick-Maintenance-Drains ab.
+FIELD_COST_SAFETY_MARGIN = 1.15
+
+
 def _can_afford_field(state: GameState) -> bool:
-    """Read backend-truth from `state.available_actions["create_field"]`.
+    """Read backend-truth from `state.available_actions["create_field"]`,
+    plus 15-%-Safety-Margin gegen Decide/Execute-Race.
 
     Backend `_build_action_availability` (agent_game.py:2595+) computes
-    `can_afford` against the live hot-config `FIELD_COST_BASE`. Bei 0
-    owned fields ist next_cost=0 → True (first field free). S168:
-    vorherige Tree-Konstante `FIELD_COST_BASE = 5_000.0` war ein Drift-
-    Bug, der den 0→1-Übergang für jeden Agent <5k E strukturell
-    blockierte; SDK ≥ 0.13.1 reicht das Backend-Feld jetzt durch
-    (`state.available_actions["create_field"]["can_afford"]`).
+    `can_afford` und `next_cost`. v1.1.3 nutzt beide:
+    - Wenn `next_cost` verfügbar: prüfe `energy >= next_cost * 1.15`
+    - Sonst Fallback auf reines `can_afford`-Feld (alte SDK-Pfade)
+
+    S168 fix war Backend-Truth statt Tree-Konstante. v1.1.3 ergänzt das
+    Safety-Polster gegen Maintenance-Race. Bei 0 owned fields ist
+    next_cost=0 → 0 * 1.15 = 0 → True (first field free bleibt erhalten).
     """
     actions = getattr(state, "available_actions", None) or {}
     create = actions.get("create_field") if isinstance(actions, dict) else None
-    if isinstance(create, dict) and "can_afford" in create:
+    if not isinstance(create, dict):
+        return False  # Conservative: alte Backends ohne available_actions
+    next_cost = create.get("next_cost")
+    if next_cost is not None:
+        # Safety-Margin gegen Conway-Tick-Maintenance-Drain zwischen Decide+Execute.
+        # First-field-frei (next_cost=0) bleibt: 0 * 1.15 = 0, energy >= 0 trivial true.
+        try:
+            energy = float(getattr(state, "energy", 0) or 0)
+            return energy >= float(next_cost) * FIELD_COST_SAFETY_MARGIN
+        except (TypeError, ValueError):
+            pass
+    if "can_afford" in create:
         return bool(create["can_afford"])
-    return False  # Conservative: alte Backends ohne available_actions → Branch greift nicht.
+    return False
 
 
 BASE_TREE: list[Branch] = [
@@ -415,14 +490,13 @@ BASE_TREE: list[Branch] = [
         lambda s: _energy(s) >= 30_000 and _has_universe_cube(s),
         _act_create_field,
     ),
-    # 6. Energy >= 100k AND cheap listing AND under cube-cap → market_buy
+    # 6. Energy >= 100k AND cheap cube/field-listing AND under cube-cap → market_buy
+    #    v1.1.4: nur cube/field-Listings, keine Presets (Anti-Hoarding)
     (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, 2_000) is not None
-            and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000),
+        lambda s: _energy(s) >= 100_000
+        and _cheapest_buyable(s, 2_000, allowed_types=("cube", "field")) is not None
+        and _can_keep_buying_cubes(s),
+        _act_market_buy_under(2_000, allowed_types=("cube", "field")),
     ),
     # 7. Energy >= 1500 → market_list (mid price-tier)
     (lambda s: _market_list_offered(s, 1_500), _act_market_list(450)),
@@ -467,16 +541,34 @@ def _persona_tree(persona_branches: list[Branch]) -> list[Branch]:
     return survival_critical + persona_branches + empty_fallback + fallback
 
 
+# v1.1.2 — Persona-Create-Field-Branches nutzen `_can_afford_field` statt
+# statischer Energy-Schwellen.
+# S171-Befund (Pulsar-eye, T+24h-Bericht 2026-05-08): 110× create_field-Fail
+# mit `Insufficient energy: need 141k–163k, have <`. Branches matchten bei
+# `energy >= 30_000` (scientist) etc., aber Backend-Cost wuchs progressiv mit
+# Field-Count (~163k bei 364 Fields). S168 hatte `_can_afford_field` nur in
+# BASE_TREE Branch-2 (zero-state-bootstrap) verbaut — Persona-Branches
+# weiterhin static-energy. v1.1.2 zieht die Backend-Truth-Affordability in
+# alle 6 Persona-Create-Field-Branches.
+
+_TYPES_SCI = PERSONA_BUYABLE_TYPES["scientist"]  # ("cube", "field")
+_TYPES_WAR = PERSONA_BUYABLE_TYPES["warrior"]
+_TYPES_EXP = PERSONA_BUYABLE_TYPES["expansionist"]
+_TYPES_TRA = PERSONA_BUYABLE_TYPES["trader"]  # None — alle erlaubt
+_TYPES_DIP = PERSONA_BUYABLE_TYPES["diplomat"]
+_TYPES_FAR = PERSONA_BUYABLE_TYPES["farmer"]
+
+
 SCIENTIST_BRANCHES: list[Branch] = [
     # scientist: evolve > create_field > market_buy_blueprint > market_list_publish
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (
-        lambda s: (
-            _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000),
+        lambda s: _energy(s) >= 100_000
+        and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_SCI)
+        and _can_keep_buying_cubes(s),
+        _act_market_buy_under(2_000, allowed_types=_TYPES_SCI),
     ),
-    (lambda s: _energy(s) >= 30_000 and _has_universe_cube(s), _act_create_field),
+    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
     (lambda s: _energy(s) >= 100_000 and _market_list_offered(s, 100_000), _act_market_list(450)),
     (
         lambda s: _energy(s) >= 50_000 and _contract_target(s) is not None,
@@ -488,12 +580,12 @@ WARRIOR_BRANCHES: list[Branch] = [
     # warrior: place_cells aggressive (close-the-gap) > evolve > create_field > market_buy edge
     (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
     (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _energy(s) >= 5_000 and _has_universe_cube(s), _act_create_field),
+    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
     (
-        lambda s: (
-            _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000),
+        lambda s: _energy(s) >= 100_000
+        and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_WAR)
+        and _can_keep_buying_cubes(s),
+        _act_market_buy_under(2_000, allowed_types=_TYPES_WAR),
     ),
     (
         lambda s: _energy(s) >= 50_000 and _contract_target(s) is not None,
@@ -503,12 +595,12 @@ WARRIOR_BRANCHES: list[Branch] = [
 
 EXPANSIONIST_BRANCHES: list[Branch] = [
     # expansionist: create_field maximal > market_buy cheap_acquisition > place_cells bootstrap > evolve
-    (lambda s: _energy(s) >= 5_000 and _has_universe_cube(s), _act_create_field),
+    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
     (
-        lambda s: (
-            _energy(s) >= 100_000 and _cheapest_buyable(s, 2_000) and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000),
+        lambda s: _energy(s) >= 100_000
+        and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_EXP)
+        and _can_keep_buying_cubes(s),
+        _act_market_buy_under(2_000, allowed_types=_TYPES_EXP),
     ),
     (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
     (lambda s: _has_evolvable_field(s), _act_evolve),
@@ -523,12 +615,11 @@ TRADER_BRANCHES: list[Branch] = [
     # Trader has cube-cap too (auch Markt-Experten können Cubes nicht endlos
     # horten ohne sie einzusetzen — sonst Liquiditäts-Problem ähnlich Bank-Run).
     (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, _energy(s) * 0.1)
-            and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(1e9),
+        lambda s: _energy(s) >= 100_000
+        and _cheapest_buyable(s, _energy(s) * 0.1, allowed_types=_TYPES_TRA)
+        and _can_keep_buying_cubes(s),
+        # Trader: allowed_types=None → ALLE item_types erlaubt (Markt ist Kern)
+        _act_market_buy_under(1e9, allowed_types=_TYPES_TRA),
     ),
     (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
     (
@@ -536,7 +627,7 @@ TRADER_BRANCHES: list[Branch] = [
         _act_propose_trade_agreement,
     ),
     (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _energy(s) >= 10_000 and _has_universe_cube(s), _act_create_field),
+    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
 ]
 
 DIPLOMAT_BRANCHES: list[Branch] = [
@@ -546,12 +637,13 @@ DIPLOMAT_BRANCHES: list[Branch] = [
         _act_propose_non_aggression,
     ),
     (
-        lambda s: _cheapest_buyable(s, 1_500) and _can_keep_buying_cubes(s),
-        _act_market_buy_under(1_500),
+        lambda s: _cheapest_buyable(s, 1_500, allowed_types=_TYPES_DIP)
+        and _can_keep_buying_cubes(s),
+        _act_market_buy_under(1_500, allowed_types=_TYPES_DIP),
     ),
     (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
     (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _energy(s) >= 5_000 and _has_universe_cube(s), _act_create_field),
+    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
 ]
 
 FARMER_BRANCHES: list[Branch] = [
@@ -560,10 +652,10 @@ FARMER_BRANCHES: list[Branch] = [
     (lambda s: _market_list_offered(s, 50_000), _act_market_list(450)),
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (
-        lambda s: _cheapest_buyable(s, 500) and _can_keep_buying_cubes(s),
-        _act_market_buy_under(500),
+        lambda s: _cheapest_buyable(s, 500, allowed_types=_TYPES_FAR) and _can_keep_buying_cubes(s),
+        _act_market_buy_under(500, allowed_types=_TYPES_FAR),
     ),
-    (lambda s: _energy(s) >= 10_000 and _has_universe_cube(s), _act_create_field),
+    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
     (
         lambda s: _energy(s) >= 80_000 and _contract_target(s) is not None,
         _act_propose_non_aggression,
@@ -657,8 +749,9 @@ def _compass_modulate(
         return action, new_params
 
     # v1.1.0 explore: bei create_field umstellen auf market_buy wenn cheap-blueprint
+    # v1.1.4: explore-Compass kauft nur cube/field-Blueprints (Hoarding-Schutz)
     if action == "create_field" and compass == "explore":
-        b = _cheapest_buyable(state, 2_000)
+        b = _cheapest_buyable(state, 2_000, allowed_types=("cube", "field"))
         if b is not None:
             return ("market_buy", {"listing_id": str(b.listing_id)})
 
@@ -672,7 +765,7 @@ class TreeDecider:
     """Rule-based decision tree decider."""
 
     name: str = "tree"
-    version: str = "1.1.1"
+    version: str = "1.1.4"
 
     async def decide(self, state: GameState) -> tuple[str, dict[str, Any]]:
         persona = (getattr(state, "persona_type", None) or "scientist").lower()
