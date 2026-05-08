@@ -493,9 +493,11 @@ BASE_TREE: list[Branch] = [
     # 6. Energy >= 100k AND cheap cube/field-listing AND under cube-cap → market_buy
     #    v1.1.4: nur cube/field-Listings, keine Presets (Anti-Hoarding)
     (
-        lambda s: _energy(s) >= 100_000
-        and _cheapest_buyable(s, 2_000, allowed_types=("cube", "field")) is not None
-        and _can_keep_buying_cubes(s),
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, 2_000, allowed_types=("cube", "field")) is not None
+            and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(2_000, allowed_types=("cube", "field")),
     ),
     # 7. Energy >= 1500 → market_list (mid price-tier)
@@ -563,9 +565,11 @@ SCIENTIST_BRANCHES: list[Branch] = [
     # scientist: evolve > create_field > market_buy_blueprint > market_list_publish
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (
-        lambda s: _energy(s) >= 100_000
-        and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_SCI)
-        and _can_keep_buying_cubes(s),
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_SCI)
+            and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(2_000, allowed_types=_TYPES_SCI),
     ),
     (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
@@ -582,9 +586,11 @@ WARRIOR_BRANCHES: list[Branch] = [
     (lambda s: _has_evolvable_field(s), _act_evolve),
     (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
     (
-        lambda s: _energy(s) >= 100_000
-        and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_WAR)
-        and _can_keep_buying_cubes(s),
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_WAR)
+            and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(2_000, allowed_types=_TYPES_WAR),
     ),
     (
@@ -597,9 +603,11 @@ EXPANSIONIST_BRANCHES: list[Branch] = [
     # expansionist: create_field maximal > market_buy cheap_acquisition > place_cells bootstrap > evolve
     (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
     (
-        lambda s: _energy(s) >= 100_000
-        and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_EXP)
-        and _can_keep_buying_cubes(s),
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_EXP)
+            and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(2_000, allowed_types=_TYPES_EXP),
     ),
     (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
@@ -615,9 +623,11 @@ TRADER_BRANCHES: list[Branch] = [
     # Trader has cube-cap too (auch Markt-Experten können Cubes nicht endlos
     # horten ohne sie einzusetzen — sonst Liquiditäts-Problem ähnlich Bank-Run).
     (
-        lambda s: _energy(s) >= 100_000
-        and _cheapest_buyable(s, _energy(s) * 0.1, allowed_types=_TYPES_TRA)
-        and _can_keep_buying_cubes(s),
+        lambda s: (
+            _energy(s) >= 100_000
+            and _cheapest_buyable(s, _energy(s) * 0.1, allowed_types=_TYPES_TRA)
+            and _can_keep_buying_cubes(s)
+        ),
         # Trader: allowed_types=None → ALLE item_types erlaubt (Markt ist Kern)
         _act_market_buy_under(1e9, allowed_types=_TYPES_TRA),
     ),
@@ -637,8 +647,9 @@ DIPLOMAT_BRANCHES: list[Branch] = [
         _act_propose_non_aggression,
     ),
     (
-        lambda s: _cheapest_buyable(s, 1_500, allowed_types=_TYPES_DIP)
-        and _can_keep_buying_cubes(s),
+        lambda s: (
+            _cheapest_buyable(s, 1_500, allowed_types=_TYPES_DIP) and _can_keep_buying_cubes(s)
+        ),
         _act_market_buy_under(1_500, allowed_types=_TYPES_DIP),
     ),
     (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
