@@ -6,6 +6,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.32] — 2026-05-08
+
+### Changed
+
+- **Re-vendored TreeDecider v1.1.1 → v1.1.4** — two empirically-driven fixes
+  from the lab cluster (S171):
+  1. **`item_type` filter on `market_buy` (anti-hoarding).** S171 finding:
+     comet-hand bought preset listings 97.5 % of the time over 24 h with
+     no follow-up usage — the `_can_keep_buying_cubes` cap only counts
+     `state.universe_cubes`, presets land elsewhere and never trigger the
+     cap. Fix: persona-specific `allowed_types` keyword on
+     `_cheapest_buyable`. Default for scientist/expansionist/farmer/warrior/
+     diplomat: `("cube", "field")`. Trader: `None` (all types allowed,
+     market activity is core to the trader persona).
+  2. **15 % safety margin on `_can_afford_field`.** S171 finding: tree
+     read `available_actions["create_field"]["can_afford"]` at decide-time,
+     but between decide and execute (90 s = 1–2 Conway ticks) field
+     maintenance can drain energy below `next_cost`. Fix: check
+     `energy >= next_cost * 1.15` instead of just `next_cost`. Catches the
+     race window without changing first-field-free behaviour
+     (`next_cost=0 * 1.15 = 0`).
+- Both fixes touch all six persona create_field branches (S168 originally
+  added `_can_afford_field` only to the BASE_TREE branch-2 zero-state-
+  bootstrap path).
+
 ## [0.1.31] — 2026-05-07
 
 ### Changed
