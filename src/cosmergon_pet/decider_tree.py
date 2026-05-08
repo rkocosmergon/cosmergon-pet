@@ -1,67 +1,60 @@
-"""TreeDecider — rule-based decision tree, deterministic, no inference.
+"""TreeDecider v2.0.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
-VENDORED from ``cosmergon-decider-tree`` v1.1.4 (private cosmergon repo,
+VENDORED from ``cosmergon-decider-tree`` v2.0.2 (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``). Source-of-truth lives there.
-This copy lets the Pet stay installable from a single
-``pip install cosmergon-pet`` without an additional dep that has its own
-release cadence. When the upstream changes, copy the file again and
-bump the Pet's MINOR version. Pure-Python rule logic, no model file, no
-inference — vendoring is cheap.
 
-v1.1.4 changes (vs. v1.1.1 in Pet 0.1.31):
-  - item_type-Filter im market_buy-Branch (S171-Empirie: Comet-hand
-    97.5 % market_buy auf preset-Listings ohne Verwendung). Persona-
-    spezifisch: scientist/expansionist/farmer/warrior/diplomat kaufen
-    nur ("cube", "field"), trader darf alles.
-  - Energy-Budget-Branch via _can_afford_field mit 15 % Safety-Margin
-    gegen Decide/Execute-Race (next_cost × 1.15, fängt 1-2 Conway-Tick
-    Maintenance-Drains zwischen Decide+Execute ab).
-  - Beide Fixes ersetzen die statischen Energy-Schwellen in den 6
-    Persona-Create-Field-Branches (S168 hatte _can_afford_field nur
-    in BASE_TREE Branch-2 verbaut).
+This is a **Major architecture change** vs Pet 0.1.33 (which had Tree
+v1.1.4 first-match-cascading). v2.0.2 is GOBT (Goal-Oriented Behavior
+Tree): Subsistenz-Layer (universal) + Persona-Kern-Charakter (6 individual
+cycles) + generic score-function with goal-metric. Stateless,
+deterministic, sub-ms, explainable.
 
-v1.1.1 changes (vs. v1.1.0 in Pet 0.1.30):
-  - Anti-Hoarding cube-cap on market_buy. Cap=5 unused cubes blocks
-    further market_buy. (Greift nicht für Presets — siehe v1.1.4-Fix.)
+v2.0.2 changes (vs. v1.1.4 in Pet 0.1.33):
+  - Layer 1 Subsistenz: when energy < persona-specific threshold,
+    Pet earns energy (place_cells / market_list / create_field).
+  - Layer 2 Persona-Charakter: 6 individual life cycles
+    (scientist/trader/warrior/expansionist/diplomat/farmer), each
+    with own action pool, persona bias, goal metric.
+  - Score function generic with goal-metric argument
+    (energy_at_least, avg_cells_at_least, evolved_fields, etc.).
+  - Direction-based scoring (v2.0.2 fix): actions in right direction
+    get score ≥ 0.7 even at low magnitude — fixes
+    Pulsar-eye-pattern where +3 cells / 403 fields was scored 0.0003.
+  - Persona-Bias additive [-0.3, +0.3], goal logic dominant.
+  - Compass = additional bias modifier [-0.2, +0.2].
+  - Catastrophe-Recovery implicit via Subsistenz layer switch.
+  - PERSONA_BUYABLE_TYPES filter (v1.1.4 heritage, anti-hoarding).
+  - 15% safety margin on _can_afford_field (v1.1.3 heritage,
+    decide/execute race protection).
 
-v1.1.0 changes (vs. v1.0.0 in Pet 0.1.29):
-  - Pattern-Tier-aware preset selection (scientist/expansionist/farmer
-    pick `blinker` for evolve-prep, others keep `block`)
-  - Persona-Branches now have priority over empty_field-Refill (prevents
-    rich-state survival tunnel-vision — comet-hand S170 finding)
-  - Compass-Modulation extended (grow / cooperate / attack / explore)
+Both Pet's vendored files (decider_tree.py + persona_profiles.py) must
+be re-vendored together — they form one logical unit. Bump Pet MINOR or
+MAJOR version when re-vendoring (this is Pet 0.2.0 — major bump because
+v2.0.0 architecture replaces v1.x first-match-tree).
 
-Quelle:
-  - docs/konzepte/konzept-default-entscheidungsbaum-api-agents.md §3
-    (Basis-Baum + Persona-spezifisch + Compass-Modulation)
-  - Pet S165 L1 _PERSONA_GUIDANCE conditional sequences als
-    Inspirations-Schwelle (gleiche Persona-Pfade, deterministisch
-    statt prompt-conditional).
-
-Decision-Pipeline:
-
-    state (GameState)
-        │
-        ├─ persona = state.persona_type or "scientist"
-        ▼
-    PERSONA_TREES[persona] (list of (condition, action_fn) tuples)
-        │
-        ├─ first matching condition wins
-        ▼
-    (action, params)
-
-Compass-Modulation (state.compass_preset) tunet einzelne
-Branch-Schwellen (z.B. warrior+consolidate hebt eigene-Felder-Pflege),
-optional, fällt durch wenn nicht gesetzt.
+Source: docs/konzepte/konzept-decider-tree-v2.md (private cosmergon
+repo, S171 5-voice panel + founder review 2026-05-08).
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
 from cosmergon_agent.state import GameState
+
+from cosmergon_pet.persona_profiles import (
+    COMPASS_BIAS,
+    EVOLUTION_COST_BY_TIER,
+    PERSONA_ACTION_BIAS,
+    PERSONA_ACTION_POOLS,
+    PERSONA_BUYABLE_TYPES,
+    SUBSISTENCE_BIAS,
+    SUBSISTENCE_POOL,
+    needs_subsistence,
+    persona_current_goal,
+    subsistence_threshold,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +71,11 @@ VALID_ACTIONS: frozenset[str] = frozenset(
     }
 )
 
-# --- Konditions-Predikate ----------------------------------------------------
-# Alle Predikate sind pure und nehmen GameState. Sie müssen robust gegen
-# fehlende Felder sein (state-Schema kann variieren), daher häufig
-# ``getattr(state, name, default)``.
+CRITICAL_ENERGY = 100.0  # Sink-Schutz
+FIELD_COST_SAFETY_MARGIN = 1.15  # v1.1.3-Erbe gegen Decide/Execute-Race
+
+
+# --- State-Accessors (defensive against missing fields) ----------------------
 
 
 def _energy(state: GameState) -> float:
@@ -92,146 +86,57 @@ def _fields(state: GameState) -> list[Any]:
     return list(getattr(state, "fields", []) or [])
 
 
-def _own_fields_count(state: GameState) -> int:
-    return len(_fields(state))
+def _universe_cubes(state: GameState) -> list[Any]:
+    return list(getattr(state, "universe_cubes", []) or [])
 
 
-def _has_universe_cube(state: GameState) -> bool:
-    cubes = list(getattr(state, "universe_cubes", []) or [])
-    return len(cubes) > 0
+def _market_buyable(state: GameState) -> list[Any]:
+    wb = getattr(state, "world_briefing", None)
+    market = getattr(wb, "market", None) if wb is not None else None
+    return list(getattr(market, "buyable", ()) or [])
 
 
-def _cube_count(state: GameState) -> int:
-    return len(list(getattr(state, "universe_cubes", []) or []))
+def _contract_targets(state: GameState) -> list[Any]:
+    wb = getattr(state, "world_briefing", None)
+    return list(getattr(wb, "contract_targets", ()) or []) if wb is not None else []
 
 
-# v1.1.1 — Anti-Hoarding cap auf market_buy.
-# S170-Befund (comet-hand): scientist matched permanent market_buy weil Branch [1]
-# konstant True ist bei rich-state + cheap blueprints. Pet sammelte 12+ cubes ohne
-# sie einzusetzen. Cap=5 ungenutzte cubes triggert die nachfolgenden Branches
-# (create_field / market_list / propose_contract) — Pet wechselt zu Diversifikation.
-MARKET_BUY_CUBE_CAP = 5
-
-
-def _can_keep_buying_cubes(state: GameState) -> bool:
-    """True wenn Pet noch unter dem Cube-Hoarding-Cap ist."""
-    return _cube_count(state) < MARKET_BUY_CUBE_CAP
-
-
-def _has_evolvable_field(state: GameState) -> bool:
-    """Mirrors Pet face.py::_find_evolvable_field — full can-evolve gate."""
-    REIFE_THRESHOLDS = {2: 100, 3: 500, 4: 2000, 5: 10000}
-    EVOLUTION_COST = {1: 1000, 2: 5000, 3: 25000, 4: 125000}
-    TYPE_FOR_TIER = {2: "oscillator", 3: "spaceship", 4: "gun", 5: "breeder"}
-
-    energy = _energy(state)
-    for f in _fields(state):
-        tier = getattr(f, "entity_tier", None) or 0
-        if not isinstance(tier, int) or tier <= 0 or tier >= 5:
-            continue
-        next_tier = tier + 1
-        reife = getattr(f, "reife_score", None) or 0
-        if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
-            continue
-        required_type = TYPE_FOR_TIER.get(next_tier)
-        if required_type and getattr(f, "entity_type", None) != required_type:
-            continue
-        cost = EVOLUTION_COST.get(tier, 0)
-        if energy < cost:
-            continue
-        return True
+def _can_afford_field(state: GameState) -> bool:
+    """Backend-truth via state.available_actions["create_field"], plus 15%-Margin."""
+    actions = getattr(state, "available_actions", None) or {}
+    create = actions.get("create_field") if isinstance(actions, dict) else None
+    if not isinstance(create, dict):
+        return False
+    next_cost = create.get("next_cost")
+    if next_cost is not None:
+        try:
+            return _energy(state) >= float(next_cost) * FIELD_COST_SAFETY_MARGIN
+        except (TypeError, ValueError):
+            pass
+    if "can_afford" in create:
+        return bool(create["can_afford"])
     return False
 
 
-def _cheapest_evolvable_field(state: GameState) -> Any | None:
-    REIFE_THRESHOLDS = {2: 100, 3: 500, 4: 2000, 5: 10000}
-    EVOLUTION_COST = {1: 1000, 2: 5000, 3: 25000, 4: 125000}
-    TYPE_FOR_TIER = {2: "oscillator", 3: "spaceship", 4: "gun", 5: "breeder"}
-    energy = _energy(state)
-    eligible = []
-    for f in _fields(state):
-        tier = getattr(f, "entity_tier", None) or 0
-        if not isinstance(tier, int) or tier <= 0 or tier >= 5:
-            continue
-        next_tier = tier + 1
-        reife = getattr(f, "reife_score", None) or 0
-        if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
-            continue
-        required_type = TYPE_FOR_TIER.get(next_tier)
-        if required_type and getattr(f, "entity_type", None) != required_type:
-            continue
-        cost = EVOLUTION_COST.get(tier, 0)
-        if energy < cost:
-            continue
-        eligible.append((cost, f))
-    if not eligible:
-        return None
-    eligible.sort(key=lambda p: p[0])
-    return eligible[0][1]
+def _next_field_cost(state: GameState) -> float:
+    actions = getattr(state, "available_actions", None) or {}
+    create = actions.get("create_field") if isinstance(actions, dict) else None
+    if isinstance(create, dict) and create.get("next_cost") is not None:
+        try:
+            return float(create["next_cost"])
+        except (TypeError, ValueError):
+            return 500.0 * len(_fields(state))
+    return 500.0 * len(_fields(state))
 
 
-def _empty_field(state: GameState) -> Any | None:
-    """Field mit aktiver_zellzahl = 0 → braucht place_cells."""
-    for f in _fields(state):
-        if (getattr(f, "active_cell_count", 0) or 0) == 0:
-            return f
-    return None
+# --- Persona-spezifische preset-Wahl ----------------------------------------
 
-
-def _fewest_cells_field(state: GameState) -> Any | None:
-    fs = _fields(state)
-    if not fs:
-        return None
-    return min(fs, key=lambda f: getattr(f, "active_cell_count", 0) or 0)
-
-
-def _affordable_preset(state: GameState) -> str:
-    """Cheapest preset the agent can afford; 'block' as default.
-
-    Legacy v1.0.0-Behavior: always returns the most-expensive affordable preset
-    (counter-intuitive; the for-loop walks ascending and overwrites). Kept for
-    BASE_TREE-fallback compatibility. New code should use
-    `_persona_preferred_preset(state, persona)` for evolve-aware selection.
-    """
-    energy = _energy(state)
-    presets = [
-        ("block", 5),
-        ("blinker", 10),
-        ("toad", 50),
-        ("glider", 200),
-        ("r_pentomino", 200),
-    ]
-    for name, cost in presets:
-        if energy >= cost:
-            cheapest = name
-        else:
-            break
-    return cheapest if "cheapest" in dir() else "block"
-
-
-# v1.1.0 — Pattern-Tier-aware preset selection.
-#
-# Backend evolve-Mechanik (entity_tiers.py + decider_tree-Mirror REIFE_THRESHOLDS):
-#   T1 → T2  needs entity_type=oscillator  (cost 1k)
-#   T2 → T3  needs entity_type=spaceship   (cost 5k)
-#   T3 → T4  needs entity_type=gun         (cost 25k)
-#   T4 → T5  needs entity_type=breeder     (cost 125k)
-#
-# block (still_life) ist eine evolve-Sackgasse — der Pattern bleibt T1 für immer.
-# blinker/toad sind T1-oscillator → können T1→T2 evolve.
-# glider ist T1-spaceship → könnte T1→T2 evolve aber Backend will oscillator
-# für T2, also wird Greedy auf glider gespart bis spätere Tier-Stufe.
-#
-# Persona-Map:
-#   evolve-fokus (scientist, expansionist, farmer): blinker für oscillator-Pfad
-#   non-evolve-fokus (warrior, trader, diplomat): block bleibt — billig,
-#     für Markt/Kampf reicht still_life als territoriale Markierung.
 PERSONA_PREFERRED_PRESETS: dict[str, str] = {
-    "scientist": "blinker",
-    "expansionist": "blinker",
+    "scientist": "blinker",  # T1-oscillator, Vorbereitung für T2-evolve
+    "expansionist": "blinker",  # gleicher Pfad
     "farmer": "blinker",
-    "warrior": "block",
-    "trader": "block",
+    "warrior": "block",  # still_life als Territorial-Markierung
+    "trader": "block",  # billig
     "diplomat": "block",
 }
 
@@ -245,559 +150,448 @@ _PRESET_COST: dict[str, int] = {
 
 
 def _persona_preferred_preset(state: GameState) -> str:
-    """Pattern-Tier-aware preset selection (v1.1.0).
-
-    Wählt das preset basierend auf persona-strategie + affordability.
-    Fallback auf "block" wenn der bevorzugte preset nicht erschwinglich ist.
-    """
     persona = (getattr(state, "persona_type", None) or "scientist").lower()
     preferred = PERSONA_PREFERRED_PRESETS.get(persona, "block")
-    energy = _energy(state)
-    if energy >= _PRESET_COST.get(preferred, 5):
+    if _energy(state) >= _PRESET_COST.get(preferred, 5):
         return preferred
     return "block"
 
 
-def _any_field_below_cells(state: GameState, threshold: int) -> Any | None:
+# --- Validity-Filter ---------------------------------------------------------
+
+
+def is_valid(state: GameState, action: str) -> bool:
+    """Vor-Backend-Validity-Check. Verhindert dass Tree eine Action wählt,
+    die das Backend mit 400 ablehnen würde."""
+    if action == "wait":
+        return True
+
+    if _energy(state) < CRITICAL_ENERGY:
+        return action == "wait"  # nur wait erlaubt im Critical-Modus
+
+    if action == "create_field":
+        return _can_afford_field(state) and len(_universe_cubes(state)) > 0
+
+    if action == "place_cells":
+        if len(_fields(state)) == 0:
+            return False
+        # Cheapest preset (block) muss bezahlbar sein
+        return _energy(state) >= _PRESET_COST["block"]
+
+    if action == "evolve":
+        # Existiert ein Field das evolve-eligible ist?
+        REIFE_THRESHOLDS = {2: 100, 3: 500, 4: 2000, 5: 10000}
+        TYPE_FOR_TIER = {2: "oscillator", 3: "spaceship", 4: "gun", 5: "breeder"}
+        energy = _energy(state)
+        for f in _fields(state):
+            tier = getattr(f, "entity_tier", 0) or 0
+            if not isinstance(tier, int) or tier <= 0 or tier >= 5:
+                continue
+            next_tier = tier + 1
+            reife = getattr(f, "reife_score", 0) or 0
+            if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
+                continue
+            required_type = TYPE_FOR_TIER.get(next_tier)
+            if required_type and getattr(f, "entity_type", None) != required_type:
+                continue
+            cost = EVOLUTION_COST_BY_TIER.get(tier, 0)
+            if energy < cost:
+                continue
+            return True
+        return False
+
+    if action == "market_buy":
+        persona = (getattr(state, "persona_type", None) or "scientist").lower()
+        allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
+        energy = _energy(state)
+        for b in _market_buyable(state):
+            if allowed is not None:
+                item_type = getattr(b, "item_type", None)
+                if item_type not in allowed:
+                    continue
+            price = getattr(b, "price_energy", None)
+            if price is None:
+                continue
+            try:
+                if float(price) <= energy:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    if action == "market_list":
+        # Pet braucht etwas zum Listen + minimum-Energy für list-fee
+        # Vereinfacht: list_threshold persona-spezifisch, hier minimal 1500
+        return _energy(state) >= 1_500
+
+    if action == "propose_contract":
+        return len(_contract_targets(state)) > 0 and _energy(state) >= 5_000
+
+    if action == "transfer_energy":
+        return False  # nicht in v2.0.0-Action-Pool
+
+    return False
+
+
+# --- Action-Parameter-Resolver -----------------------------------------------
+
+
+def _fewest_cells_field(state: GameState) -> Any | None:
+    fs = _fields(state)
+    if not fs:
+        return None
+    return min(fs, key=lambda f: getattr(f, "active_cell_count", 0) or 0)
+
+
+def _empty_field(state: GameState) -> Any | None:
     for f in _fields(state):
-        if (getattr(f, "active_cell_count", 0) or 0) < threshold:
+        if (getattr(f, "active_cell_count", 0) or 0) == 0:
             return f
     return None
 
 
-# v1.1.4 — Persona-spezifische item_type-Filter im Markt-Lookup.
-# S171-Empirie (Comet-hand, Pet S170-LIVE): 97.5 % market_buy in 24h auf
-# preset-Listings (10-400 E billig, immer da). Branch-Bedingung
-# `_cheapest_buyable(s, 2_000)` und `_can_keep_buying_cubes` haben den
-# Hoarding-Modus nicht erkannt, weil Presets nicht in `state.universe_cubes`
-# wachsen → Cube-Cap greift nicht. Fix: Persona-Branches reichen explizit
-# erlaubte item_types durch. Trader darf alles, alle anderen nur cube/field
-# (Bau-Bauteile für Wachstum, keine ungenutzten Preset-Vorräte).
-PERSONA_BUYABLE_TYPES: dict[str, tuple[str, ...] | None] = {
-    "scientist": ("cube", "field"),
-    "expansionist": ("cube", "field"),
-    "farmer": ("cube", "field"),
-    "warrior": ("cube", "field"),
-    "diplomat": ("cube", "field"),
-    "trader": None,  # alle item_types erlaubt — Markt-Aktivität ist Trader-Kerngeschäft
-}
-
-
-def _cheapest_buyable(
-    state: GameState,
-    max_price: float,
-    *,
-    allowed_types: tuple[str, ...] | None = None,
-) -> Any | None:
-    """Cheapest buyable matching `allowed_types` (None = alle).
-
-    v1.1.4: Filter nach `b.item_type`. Wenn `allowed_types` nicht None,
-    werden nur Listings mit passendem `item_type` betrachtet. Listings ohne
-    item_type-Feld (alte SDK-Pfade) werden bei aktivem Filter übersprungen.
-    """
-    wb = getattr(state, "world_briefing", None)
-    market = getattr(wb, "market", None) if wb is not None else None
-    buyable = list(getattr(market, "buyable", ()) or [])
+def _cheapest_evolvable_field(state: GameState) -> Any | None:
+    REIFE_THRESHOLDS = {2: 100, 3: 500, 4: 2000, 5: 10000}
+    TYPE_FOR_TIER = {2: "oscillator", 3: "spaceship", 4: "gun", 5: "breeder"}
     energy = _energy(state)
+    eligible = []
+    for f in _fields(state):
+        tier = getattr(f, "entity_tier", 0) or 0
+        if not isinstance(tier, int) or tier <= 0 or tier >= 5:
+            continue
+        next_tier = tier + 1
+        reife = getattr(f, "reife_score", 0) or 0
+        if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
+            continue
+        required_type = TYPE_FOR_TIER.get(next_tier)
+        if required_type and getattr(f, "entity_type", None) != required_type:
+            continue
+        cost = EVOLUTION_COST_BY_TIER.get(tier, 0)
+        if energy < cost:
+            continue
+        eligible.append((cost, f))
+    if not eligible:
+        return None
+    eligible.sort(key=lambda p: p[0])
+    return eligible[0][1]
 
-    def _passes_type_filter(b: Any) -> bool:
-        if allowed_types is None:
-            return True
-        item_type = getattr(b, "item_type", None)
-        return item_type in allowed_types
 
-    candidates = [
-        b
-        for b in buyable
-        if _passes_type_filter(b)
-        and (getattr(b, "price_energy", 1e18) or 1e18) <= max_price
-        and (getattr(b, "price_energy", 1e18) or 1e18) <= energy
-    ]
+def _cheapest_buyable(state: GameState, persona: str) -> Any | None:
+    allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
+    energy = _energy(state)
+    candidates = []
+    for b in _market_buyable(state):
+        if allowed is not None:
+            if getattr(b, "item_type", None) not in allowed:
+                continue
+        price = getattr(b, "price_energy", None)
+        try:
+            price_f = float(price) if price is not None else None
+        except (TypeError, ValueError):
+            continue
+        if price_f is None or price_f > energy:
+            continue
+        candidates.append((price_f, b))
     if not candidates:
         return None
-    return min(candidates, key=lambda b: getattr(b, "price_energy", 1e18))
+    candidates.sort(key=lambda p: p[0])
+    return candidates[0][1]
 
 
-def _market_list_offered(state: GameState, min_energy: float) -> bool:
-    return _energy(state) >= min_energy
+def resolve_action_params(state: GameState, action: str, persona: str) -> dict[str, Any]:
+    """Best-effort Parameter-Auswahl für die gewählte Action."""
+    if action == "create_field":
+        cubes = _universe_cubes(state)
+        return {"cube_id": str(cubes[0].id)} if cubes else {}
+
+    if action == "place_cells":
+        # Bevorzuge empty_field, sonst fewest_cells
+        target = _empty_field(state) or _fewest_cells_field(state)
+        if target is None:
+            return {}
+        return {"field_id": str(target.id), "preset": _persona_preferred_preset(state)}
+
+    if action == "evolve":
+        f = _cheapest_evolvable_field(state)
+        return {"field_id": str(f.id)} if f else {}
+
+    if action == "market_buy":
+        b = _cheapest_buyable(state, persona)
+        return {"listing_id": str(b.listing_id)} if b else {}
+
+    if action == "market_list":
+        # Persona-spezifischer Listenpreis (default 450)
+        prices = {
+            "trader": 500,
+            "scientist": 450,
+            "warrior": 400,
+            "expansionist": 400,
+            "diplomat": 450,
+            "farmer": 450,
+        }
+        return {"price_energy": prices.get(persona, 450)}
+
+    if action == "propose_contract":
+        targets = _contract_targets(state)
+        if not targets:
+            return {}
+        target = targets[0]
+        contract_types = {
+            "scientist": "research_agreement",
+            "trader": "trade_agreement",
+            "warrior": "non_aggression",
+            "diplomat": "non_aggression",
+            "farmer": "trade_agreement",
+            "expansionist": "non_aggression",
+        }
+        return {
+            "to_player_id": str(target.player_id),
+            "contract_type": contract_types.get(persona, "non_aggression"),
+            "terms": {"duration_ticks": 100},
+            "escrow_amount": 0,
+        }
+
+    return {}
 
 
-def _contract_target(state: GameState) -> Any | None:
-    wb = getattr(state, "world_briefing", None)
-    targets = list(getattr(wb, "contract_targets", ()) or []) if wb is not None else []
-    return targets[0] if targets else None
+# --- Predict-Delta-Funktionen (was ändert die Action am State?) --------------
 
 
-# --- Branch-Konstruktoren ----------------------------------------------------
+def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dict[str, float]:
+    """Schätzt State-Delta für die Action. Wird vom Score genutzt um
+    Goal-Distance-Reduktion zu messen."""
+    n_fields = len(_fields(state))
 
-Branch = tuple[Callable[[GameState], bool], Callable[[GameState], tuple[str, dict[str, Any]]]]
+    if action == "wait":
+        return {}
 
+    if action == "create_field":
+        next_cost = _next_field_cost(state)
+        return {
+            "energy": -next_cost,
+            "field_count": +1,
+            "avg_cells": -(
+                (
+                    sum(getattr(f, "active_cell_count", 0) or 0 for f in _fields(state))
+                    / max(n_fields, 1)
+                )
+                - (
+                    sum(getattr(f, "active_cell_count", 0) or 0 for f in _fields(state))
+                    / max(n_fields + 1, 1)
+                )
+            ),
+        }
 
-def _act_place_cells_fewest(state: GameState) -> tuple[str, dict[str, Any]]:
-    f = _fewest_cells_field(state)
-    if f is None:
-        return ("wait", {})
-    return ("place_cells", {"field_id": str(f.id), "preset": _persona_preferred_preset(state)})
+    if action == "place_cells":
+        preset = params.get("preset", "block")
+        cost = _PRESET_COST.get(preset, 5)
+        # blinker fügt ~3 cells, glider ~5, etc. Schätzung:
+        cells_added = {"block": 4, "blinker": 3, "toad": 6, "glider": 5, "r_pentomino": 5}.get(
+            preset, 4
+        )
+        avg_cells_delta = cells_added / max(n_fields, 1) if n_fields else 0
+        return {
+            "energy": -cost,
+            "avg_cells": +avg_cells_delta,
+            "patterns_established": +1 if preset != "block" else 0,
+        }
 
+    if action == "evolve":
+        # Tier-Aufstieg eines Fields
+        f = _cheapest_evolvable_field(state)
+        if f is None:
+            return {}
+        tier = getattr(f, "entity_tier", 1) or 1
+        cost = EVOLUTION_COST_BY_TIER.get(tier, 1_000)
+        return {"energy": -cost, "evolved_fields": +1}
 
-def _act_place_cells_empty(state: GameState) -> tuple[str, dict[str, Any]]:
-    """v1.1.0: persona-aware preset (was hardcoded `block`).
-
-    scientist/expansionist/farmer get oscillator-pattern (`blinker`) so the
-    field becomes T1-oscillator and qualifies for T1→T2 evolve once reife
-    crosses 100. warrior/trader/diplomat keep `block` — they don't optimise
-    for evolve and care about cost minimisation per fill.
-    """
-    f = _empty_field(state) or _fewest_cells_field(state)
-    if f is None:
-        return ("wait", {})
-    return ("place_cells", {"field_id": str(f.id), "preset": _persona_preferred_preset(state)})
-
-
-def _act_evolve(state: GameState) -> tuple[str, dict[str, Any]]:
-    f = _cheapest_evolvable_field(state)
-    if f is None:
-        return ("wait", {})
-    return ("evolve", {"field_id": str(f.id)})
-
-
-def _act_create_field(state: GameState) -> tuple[str, dict[str, Any]]:
-    cubes = list(getattr(state, "universe_cubes", []) or [])
-    if not cubes:
-        return ("wait", {})
-    return ("create_field", {"cube_id": str(cubes[0].id)})
-
-
-def _act_market_buy_under(
-    price: float,
-    *,
-    allowed_types: tuple[str, ...] | None = None,
-):
-    """v1.1.4: Action erbt den Persona-spezifischen item_type-Filter."""
-
-    def inner(state: GameState) -> tuple[str, dict[str, Any]]:
-        b = _cheapest_buyable(state, price, allowed_types=allowed_types)
+    if action == "market_buy":
+        b = _cheapest_buyable(state, (getattr(state, "persona_type", None) or "scientist").lower())
         if b is None:
-            return ("wait", {})
-        return ("market_buy", {"listing_id": str(b.listing_id)})
+            return {}
+        price = getattr(b, "price_energy", 0) or 0
+        item_type = getattr(b, "item_type", None)
+        return {
+            "energy": -float(price),
+            "inventory_growth": +1,
+            "is_cube_or_field": 1.0 if item_type in ("cube", "field") else 0.0,
+        }
 
-    return inner
+    if action == "market_list":
+        # Annahme: list-fee marginal, Verkauf ist ungewiss aber positiv
+        list_price = params.get("price_energy", 450)
+        return {"energy_listed": +float(list_price), "energy": -10.0}  # listing-fee
 
+    if action == "propose_contract":
+        return {"energy": -float(params.get("escrow_amount", 0) or 0), "active_contracts": +1}
 
-def _act_market_list(price: int):
-    def inner(state: GameState) -> tuple[str, dict[str, Any]]:
-        return ("market_list", {"price_energy": price})
-
-    return inner
-
-
-def _act_propose_non_aggression(state: GameState) -> tuple[str, dict[str, Any]]:
-    t = _contract_target(state)
-    if t is None:
-        return ("wait", {})
-    return (
-        "propose_contract",
-        {
-            "to_player_id": str(t.player_id),
-            "contract_type": "non_aggression",
-            "terms": {"duration_ticks": 100},
-            "escrow_amount": 0,
-        },
-    )
+    return {}
 
 
-def _act_propose_trade_agreement(state: GameState) -> tuple[str, dict[str, Any]]:
-    t = _contract_target(state)
-    if t is None:
-        return ("wait", {})
-    return (
-        "propose_contract",
-        {
-            "to_player_id": str(t.player_id),
-            "contract_type": "trade_agreement",
-            "terms": {"duration_ticks": 100},
-            "escrow_amount": 0,
-        },
-    )
+# --- Score-Funktion (generisch, mit Goal-Metric) -----------------------------
 
 
-def _act_wait(state: GameState) -> tuple[str, dict[str, Any]]:
-    return ("wait", {})
+def score_action(
+    state: GameState, action: str, params: dict[str, Any], goal_metric: dict[str, Any]
+) -> float:
+    """Wie sehr reduziert die Action die Distanz zum Goal?
+    Returns float in [0, 1]. Höher = besser."""
+    delta = _predict_delta(state, action, params)
+    if not delta:
+        return 0.0
+
+    kind = goal_metric.get("kind", "")
+
+    if kind == "energy_at_least":
+        target = float(goal_metric.get("target", 0))
+        current = _energy(state)
+        gap = max(0.0, target - current)
+        if gap == 0:
+            return 0.1  # Goal erreicht, Action irrelevant aber kein negativ
+        # Sonderfall: 0 Fields + create_field ist EINZIGE sustainable Income-Quelle.
+        # Ohne Field gibt es kein Conway-Income, market_list ist einmaliger Boost,
+        # danach wieder im selben State. Bootstrap braucht create_field absolut.
+        if action == "create_field" and len(_fields(state)) == 0:
+            return 1.0
+        # Direktes Energy-Plus
+        e_delta = delta.get("energy", 0.0) + delta.get("energy_listed", 0.0) * 0.5
+        # 0.5 weil market_list ungewisser Verkauf
+        return max(0.0, min(1.0, e_delta / gap))
+
+    if kind == "avg_cells_at_least":
+        target = float(goal_metric.get("target", 100))
+        fields = _fields(state)
+        if not fields:
+            return 0.5 if action == "create_field" else 0.0
+        current = sum(getattr(f, "active_cell_count", 0) or 0 for f in fields) / len(fields)
+        gap = max(0.0, target - current)
+        if gap == 0:
+            return 0.1
+        # Direction-based scoring: jede Action die in richtige Richtung wirkt
+        # bekommt einen Mindest-Score, auch bei geringer Magnitude. Sonst
+        # wird bei vielen Fields der Cell-Anstieg pro place_cells (1/N) zu klein
+        # bewertet und Pet würde nie Cells nachfüllen (S171 Pulsar-eye-Befund).
+        avg_cells_delta = delta.get("avg_cells", 0.0)
+        if avg_cells_delta > 0:
+            # Right-direction action — base score 0.7, plus magnitude-Bonus.
+            magnitude_bonus = min(0.3, avg_cells_delta / gap)
+            return 0.7 + magnitude_bonus
+        elif avg_cells_delta < 0:
+            return 0.0  # Wrong direction (z.B. create_field reduziert avg_cells)
+        return 0.0  # No effect
+
+    if kind == "field_count_at_least":
+        target = int(goal_metric.get("target", 1))
+        current = len(_fields(state))
+        gap = max(0, target - current)
+        if gap == 0:
+            return 0.1
+        # Direction-based: create_field bringt +1 Field, andere 0
+        if delta.get("field_count", 0) > 0:
+            return 0.8
+        return 0.0
+
+    if kind == "evolved_fields_at_least":
+        # Evolve-Action ist direkt zielführend
+        return 1.0 if delta.get("evolved_fields", 0) > 0 else 0.0
+
+    if kind == "patterns_established":
+        return 0.8 if delta.get("patterns_established", 0) > 0 else 0.0
+
+    if kind == "active_contracts_at_least":
+        target = int(goal_metric.get("target", 1))
+        # Wir kennen aktuelle contract-count nicht direkt; approximieren mit delta
+        return 1.0 if delta.get("active_contracts", 0) > 0 else 0.0
+
+    if kind == "all_fields_min_cells":
+        target = float(goal_metric.get("target", 30))
+        # place_cells auf das Field mit den wenigsten Cells reduziert die Distanz
+        if action == "place_cells":
+            fewest = _fewest_cells_field(state)
+            if fewest:
+                current = getattr(fewest, "active_cell_count", 0) or 0
+                if current < target:
+                    return 0.9
+        return 0.0
+
+    if kind == "fields_use_inventory":
+        # Trader-Inventar-Use: create_field oder place_cells = gut
+        if action in ("create_field", "place_cells"):
+            return 0.8
+        return 0.0
+
+    if kind == "energy_growth_via_market":
+        # Trader-Markt-Spread: market_buy + market_list = gut
+        if action in ("market_buy", "market_list"):
+            return 0.8
+        return 0.0
+
+    return 0.0
 
 
-# --- Basis-Baum (Survival → Wachstum) ----------------------------------------
-
-CRITICAL_ENERGY = 100.0  # Sink-Schutz, Konzept §3.1
-
-
-# v1.1.3 — Safety-Margin gegen Decide/Execute-Race-Condition.
-# S171 T+3-Empirie (Pulsar-eye, 4/5 Fail nach v1.1.2): can_afford zur
-# Decide-Time war True (energy 200k > cost 187k), aber zwischen Decide
-# und Execute (90 s = 1.5 Conway-Ticks) drain Field-Maintenance die
-# Energy unter cost. Backend rejected mit "Insufficient energy: need
-# 187k, have 175k". v1.1.3 prüft gegen `next_cost * MARGIN` — das
-# 15-%-Polster fängt 1-2 Conway-Tick-Maintenance-Drains ab.
-FIELD_COST_SAFETY_MARGIN = 1.15
-
-
-def _can_afford_field(state: GameState) -> bool:
-    """Read backend-truth from `state.available_actions["create_field"]`,
-    plus 15-%-Safety-Margin gegen Decide/Execute-Race.
-
-    Backend `_build_action_availability` (agent_game.py:2595+) computes
-    `can_afford` und `next_cost`. v1.1.3 nutzt beide:
-    - Wenn `next_cost` verfügbar: prüfe `energy >= next_cost * 1.15`
-    - Sonst Fallback auf reines `can_afford`-Feld (alte SDK-Pfade)
-
-    S168 fix war Backend-Truth statt Tree-Konstante. v1.1.3 ergänzt das
-    Safety-Polster gegen Maintenance-Race. Bei 0 owned fields ist
-    next_cost=0 → 0 * 1.15 = 0 → True (first field free bleibt erhalten).
-    """
-    actions = getattr(state, "available_actions", None) or {}
-    create = actions.get("create_field") if isinstance(actions, dict) else None
-    if not isinstance(create, dict):
-        return False  # Conservative: alte Backends ohne available_actions
-    next_cost = create.get("next_cost")
-    if next_cost is not None:
-        # Safety-Margin gegen Conway-Tick-Maintenance-Drain zwischen Decide+Execute.
-        # First-field-frei (next_cost=0) bleibt: 0 * 1.15 = 0, energy >= 0 trivial true.
-        try:
-            energy = float(getattr(state, "energy", 0) or 0)
-            return energy >= float(next_cost) * FIELD_COST_SAFETY_MARGIN
-        except (TypeError, ValueError):
-            pass
-    if "can_afford" in create:
-        return bool(create["can_afford"])
-    return False
-
-
-BASE_TREE: list[Branch] = [
-    # 1. Critical-Energy → wait (Sink-Schutz)
-    (lambda s: _energy(s) < CRITICAL_ENERGY, _act_wait),
-    # 2. Keine eigenen Felder + Field bezahlbar → create_field
-    #    S168: backend-getriebene cost-prüfung statt hardcode. Greift
-    #    insbesondere bei 0 owned (next_field=0, "first field free").
-    (
-        lambda s: _own_fields_count(s) == 0 and _can_afford_field(s) and _has_universe_cube(s),
-        _act_create_field,
-    ),
-    # 3. Empty field → place_cells block (Reanimation)
-    (lambda s: _empty_field(s) is not None, _act_place_cells_empty),
-    # 4. Evolvable field → evolve
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    # 5. Energy >= 30k AND universe-cube → create_field (Wachstum)
-    (
-        lambda s: _energy(s) >= 30_000 and _has_universe_cube(s),
-        _act_create_field,
-    ),
-    # 6. Energy >= 100k AND cheap cube/field-listing AND under cube-cap → market_buy
-    #    v1.1.4: nur cube/field-Listings, keine Presets (Anti-Hoarding)
-    (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, 2_000, allowed_types=("cube", "field")) is not None
-            and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000, allowed_types=("cube", "field")),
-    ),
-    # 7. Energy >= 1500 → market_list (mid price-tier)
-    (lambda s: _market_list_offered(s, 1_500), _act_market_list(450)),
-    # 8. Fallback: place_cells fewest cells
-    (lambda s: _own_fields_count(s) > 0, _act_place_cells_fewest),
-    # 9. Sonst: wait
-    (lambda s: True, _act_wait),
-]
-
-
-# --- Persona-spezifische Bäume ------------------------------------------------
-# Jede Persona hat einen eigenen Branch-Order. Pattern: prepend
-# Persona-Kerngeschäft-Branches an Basis-Baum, sodass diese zuerst
-# evaluiert werden. Critical-Energy + Empty-Field bleiben Top-Branches
-# in jedem Tree (Survival universal).
-
-
-def _persona_tree(persona_branches: list[Branch]) -> list[Branch]:
-    """Persona-Branches haben Vorrang über empty-field-Survival-Refill (v1.1.0).
-
-    Reihenfolge der Branches:
-      1. CRITICAL_ENERGY < 100 → wait (absoluter Sink-Schutz)
-      2. own_fields == 0 + can_afford → create_field (zero-state-bootstrap)
-      3. Persona-spezifische Strategien (evolve / market_buy / create_field /
-         market_list / propose_contract je nach Persona)
-      4. empty_field → place_cells (Refill-Survival, fällt durch wenn (3) matched)
-      5. fewest-cells → place_cells (Pflege-Fallback)
-      6. wait
-
-    v1.0.0 hatte (4) VOR (3) → reiche Agents (4.57 M E + viele Fields + ein
-    leeres Feld) machten endlos place_cells statt market_list / propose_contract /
-    create_field. Verifiziert S170 anhand comet-hand.
-
-    Begründung der neuen Reihenfolge: bei rich-state ist Refill nicht
-    rationaler als strategische Aktionen. Die Persona-Branches haben
-    Energy-Schwellen (>=30 k bis >=100 k), die bei armen Agents nicht
-    matchen — dort fällt der Tree natürlich auf empty_field zurück.
-    """
-    survival_critical = BASE_TREE[:2]  # critical-energy + 0-fields-create_field
-    empty_fallback = [BASE_TREE[2]]  # empty_field → place_cells
-    fallback = BASE_TREE[7:]  # fewest-cells + wait
-    return survival_critical + persona_branches + empty_fallback + fallback
-
-
-# v1.1.2 — Persona-Create-Field-Branches nutzen `_can_afford_field` statt
-# statischer Energy-Schwellen.
-# S171-Befund (Pulsar-eye, T+24h-Bericht 2026-05-08): 110× create_field-Fail
-# mit `Insufficient energy: need 141k–163k, have <`. Branches matchten bei
-# `energy >= 30_000` (scientist) etc., aber Backend-Cost wuchs progressiv mit
-# Field-Count (~163k bei 364 Fields). S168 hatte `_can_afford_field` nur in
-# BASE_TREE Branch-2 (zero-state-bootstrap) verbaut — Persona-Branches
-# weiterhin static-energy. v1.1.2 zieht die Backend-Truth-Affordability in
-# alle 6 Persona-Create-Field-Branches.
-
-_TYPES_SCI = PERSONA_BUYABLE_TYPES["scientist"]  # ("cube", "field")
-_TYPES_WAR = PERSONA_BUYABLE_TYPES["warrior"]
-_TYPES_EXP = PERSONA_BUYABLE_TYPES["expansionist"]
-_TYPES_TRA = PERSONA_BUYABLE_TYPES["trader"]  # None — alle erlaubt
-_TYPES_DIP = PERSONA_BUYABLE_TYPES["diplomat"]
-_TYPES_FAR = PERSONA_BUYABLE_TYPES["farmer"]
-
-
-SCIENTIST_BRANCHES: list[Branch] = [
-    # scientist: evolve > create_field > market_buy_blueprint > market_list_publish
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_SCI)
-            and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000, allowed_types=_TYPES_SCI),
-    ),
-    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
-    (lambda s: _energy(s) >= 100_000 and _market_list_offered(s, 100_000), _act_market_list(450)),
-    (
-        lambda s: _energy(s) >= 50_000 and _contract_target(s) is not None,
-        _act_propose_trade_agreement,
-    ),
-]
-
-WARRIOR_BRANCHES: list[Branch] = [
-    # warrior: place_cells aggressive (close-the-gap) > evolve > create_field > market_buy edge
-    (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
-    (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_WAR)
-            and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000, allowed_types=_TYPES_WAR),
-    ),
-    (
-        lambda s: _energy(s) >= 50_000 and _contract_target(s) is not None,
-        _act_propose_non_aggression,
-    ),
-]
-
-EXPANSIONIST_BRANCHES: list[Branch] = [
-    # expansionist: create_field maximal > market_buy cheap_acquisition > place_cells bootstrap > evolve
-    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
-    (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, 2_000, allowed_types=_TYPES_EXP)
-            and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(2_000, allowed_types=_TYPES_EXP),
-    ),
-    (lambda s: _any_field_below_cells(s, 30) is not None, _act_place_cells_fewest),
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    (
-        lambda s: _energy(s) >= 50_000 and _contract_target(s) is not None,
-        _act_propose_non_aggression,
-    ),
-]
-
-TRADER_BRANCHES: list[Branch] = [
-    # trader: market_buy primary > market_list monetise > evolve > create_field
-    # Trader has cube-cap too (auch Markt-Experten können Cubes nicht endlos
-    # horten ohne sie einzusetzen — sonst Liquiditäts-Problem ähnlich Bank-Run).
-    (
-        lambda s: (
-            _energy(s) >= 100_000
-            and _cheapest_buyable(s, _energy(s) * 0.1, allowed_types=_TYPES_TRA)
-            and _can_keep_buying_cubes(s)
-        ),
-        # Trader: allowed_types=None → ALLE item_types erlaubt (Markt ist Kern)
-        _act_market_buy_under(1e9, allowed_types=_TYPES_TRA),
-    ),
-    (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
-    (
-        lambda s: _energy(s) >= 30_000 and _contract_target(s) is not None,
-        _act_propose_trade_agreement,
-    ),
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
-]
-
-DIPLOMAT_BRANCHES: list[Branch] = [
-    # diplomat: propose_contract prime move > market_buy goodwill > market_list relationship-build
-    (
-        lambda s: _energy(s) >= 10_000 and _contract_target(s) is not None,
-        _act_propose_non_aggression,
-    ),
-    (
-        lambda s: (
-            _cheapest_buyable(s, 1_500, allowed_types=_TYPES_DIP) and _can_keep_buying_cubes(s)
-        ),
-        _act_market_buy_under(1_500, allowed_types=_TYPES_DIP),
-    ),
-    (lambda s: _market_list_offered(s, 30_000), _act_market_list(450)),
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
-]
-
-FARMER_BRANCHES: list[Branch] = [
-    # farmer: top-up (place_cells <50) > market_list surplus > evolve > market_buy cheap
-    (lambda s: _any_field_below_cells(s, 50) is not None, _act_place_cells_fewest),
-    (lambda s: _market_list_offered(s, 50_000), _act_market_list(450)),
-    (lambda s: _has_evolvable_field(s), _act_evolve),
-    (
-        lambda s: _cheapest_buyable(s, 500, allowed_types=_TYPES_FAR) and _can_keep_buying_cubes(s),
-        _act_market_buy_under(500, allowed_types=_TYPES_FAR),
-    ),
-    (lambda s: _can_afford_field(s) and _has_universe_cube(s), _act_create_field),
-    (
-        lambda s: _energy(s) >= 80_000 and _contract_target(s) is not None,
-        _act_propose_non_aggression,
-    ),
-]
-
-
-PERSONA_TREES: dict[str, list[Branch]] = {
-    "scientist": _persona_tree(SCIENTIST_BRANCHES),
-    "warrior": _persona_tree(WARRIOR_BRANCHES),
-    "expansionist": _persona_tree(EXPANSIONIST_BRANCHES),
-    "trader": _persona_tree(TRADER_BRANCHES),
-    "diplomat": _persona_tree(DIPLOMAT_BRANCHES),
-    "farmer": _persona_tree(FARMER_BRANCHES),
-}
-
-
-# --- Compass-Modulation (optional Override-Hook) -----------------------------
-
-
-def _compass_modulate(
-    action: str,
-    params: dict[str, Any],
-    compass: str | None,
-    state: GameState,
-) -> tuple[str, dict[str, Any]]:
-    """Compass-Override: post-tree action-rewriting je nach Compass-Setting.
-
-    MVP-Philosophie: leichte Anpassungen, kein voll-blockierender Override —
-    der Tree bleibt die primäre Quelle, Compass tunet einzelne Resultate.
-
-    Konzept §3.3 + v1.1.0-Erweiterung:
-
-    +-------------+---------+--------------------------------------------------+
-    | Compass     | Wirkung | Beispiel                                         |
-    +-------------+---------+--------------------------------------------------+
-    | consolidate | Pflege  | create_field → place_cells (eigene Felder zuerst)|
-    | defend      | Schutz  | trade_agreement → non_aggression                 |
-    | grow        | Expand. | place_cells → create_field bei rich-state + cube |
-    | cooperate   | Verträge| place_cells → propose_contract bei target+energy |
-    | attack      | Offens. | place_cells preset → glider (Spaceship-Pattern)  |
-    | explore     | Markt   | create_field → market_buy bei cheap-blueprint    |
-    +-------------+---------+--------------------------------------------------+
-
-    Compass=None → no-op (Default für Pet, das kein Compass setzt).
-    """
-    if not compass:
-        return action, params
-
-    # consolidate: bevorzuge eigene Felder pflegen statt neuen anlegen
-    if action == "create_field" and compass == "consolidate":
-        f = _fewest_cells_field(state)
-        if f is not None:
-            return (
-                "place_cells",
-                {"field_id": str(f.id), "preset": _persona_preferred_preset(state)},
-            )
-
-    # defend: erzwinge non_aggression statt trade_agreement
-    if action == "propose_contract" and compass == "defend":
-        if params.get("contract_type") == "trade_agreement":
-            new_params = dict(params)
-            new_params["contract_type"] = "non_aggression"
-            return action, new_params
-
-    # v1.1.0 grow: bei place_cells umstellen auf create_field wenn rich + cube
-    if action == "place_cells" and compass == "grow":
-        if _energy(state) >= 50_000 and _has_universe_cube(state):
-            cubes = list(getattr(state, "universe_cubes", []) or [])
-            return ("create_field", {"cube_id": str(cubes[0].id)})
-
-    # v1.1.0 cooperate: bei place_cells umstellen auf propose_contract wenn target+energy
-    if action == "place_cells" and compass == "cooperate":
-        target = _contract_target(state)
-        if target is not None and _energy(state) >= 30_000:
-            return (
-                "propose_contract",
-                {
-                    "to_player_id": str(target.player_id),
-                    "contract_type": "trade_agreement",
-                    "terms": {"duration_ticks": 100},
-                    "escrow_amount": 0,
-                },
-            )
-
-    # v1.1.0 attack: place_cells-preset auf glider (T1-spaceship, offensiv)
-    if action == "place_cells" and compass == "attack":
-        new_params = dict(params)
-        if _energy(state) >= _PRESET_COST.get("glider", 200):
-            new_params["preset"] = "glider"
-        return action, new_params
-
-    # v1.1.0 explore: bei create_field umstellen auf market_buy wenn cheap-blueprint
-    # v1.1.4: explore-Compass kauft nur cube/field-Blueprints (Hoarding-Schutz)
-    if action == "create_field" and compass == "explore":
-        b = _cheapest_buyable(state, 2_000, allowed_types=("cube", "field"))
-        if b is not None:
-            return ("market_buy", {"listing_id": str(b.listing_id)})
-
-    return action, params
-
-
-# --- Decider-Klasse ---------------------------------------------------------
+# --- Decision-Pipeline -------------------------------------------------------
 
 
 class TreeDecider:
-    """Rule-based decision tree decider."""
+    """GOBT-Pattern decider: Subsistenz-Check + Persona-Charakter-Cycle."""
 
     name: str = "tree"
-    version: str = "1.1.4"
+    version: str = "2.0.2"
 
     async def decide(self, state: GameState) -> tuple[str, dict[str, Any]]:
+        # Critical-Energy → wait (Sink-Schutz, vor allen Layern)
+        if _energy(state) < CRITICAL_ENERGY:
+            return ("wait", {})
+
         persona = (getattr(state, "persona_type", None) or "scientist").lower()
-        tree = PERSONA_TREES.get(persona, PERSONA_TREES["scientist"])
-        for condition, action_fn in tree:
-            try:
-                if condition(state):
-                    action, params = action_fn(state)
-                    compass = getattr(state, "compass_preset", None)
-                    if compass:
-                        action, params = _compass_modulate(action, params, compass, state)
-                    if action not in VALID_ACTIONS:
-                        # Defensive: should never happen with our action_fns,
-                        # but defend against future regressions.
-                        logger.warning("tree produced invalid action %r → wait", action)
-                        return ("wait", {})
-                    return action, params
-            except Exception as e:
-                logger.warning("tree branch errored: %s — skipping", e)
+        if persona not in PERSONA_ACTION_POOLS:
+            persona = "scientist"  # default
+
+        compass = getattr(state, "compass_preset", None)
+
+        # Layer 1: Subsistenz-Check
+        if needs_subsistence(state, persona):
+            action_pool: tuple[str, ...] = SUBSISTENCE_POOL
+            goal_metric = {
+                "kind": "energy_at_least",
+                "target": subsistence_threshold(persona, state) * 1.5,
+            }
+            bias_map = SUBSISTENCE_BIAS
+        else:
+            # Layer 2: Persona-Charakter
+            action_pool = PERSONA_ACTION_POOLS[persona]
+            goal_metric = persona_current_goal(state, persona)
+            bias_map = PERSONA_ACTION_BIAS.get(persona, {})
+
+        # Compass-Modifier (additiv)
+        compass_modifier = COMPASS_BIAS.get(compass or "autonomous", {})
+
+        # Validity + Score
+        scores: dict[str, tuple[float, dict[str, Any]]] = {}
+        for action in action_pool:
+            if action not in VALID_ACTIONS:
                 continue
-        return ("wait", {})
+            if not is_valid(state, action):
+                continue
+            params = resolve_action_params(state, action, persona)
+            base = score_action(state, action, params, goal_metric)
+            persona_b = bias_map.get(action, 0.0)
+            compass_b = compass_modifier.get(action, 0.0)
+            final = base + persona_b + compass_b
+            scores[action] = (final, params)
+
+        if not scores:
+            return ("wait", {})
+
+        # Argmax
+        best = max(scores.keys(), key=lambda a: scores[a][0])
+        action, params = best, scores[best][1]
+
+        if action not in VALID_ACTIONS:
+            logger.warning("v2.0.0 produced invalid action %r → wait", action)
+            return ("wait", {})
+
+        return action, params
 
     async def healthcheck(self) -> bool:
         return True
