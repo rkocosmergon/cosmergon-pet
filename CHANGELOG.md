@@ -6,6 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-09
+
+### Fixed
+
+- **Diplomat-persona `propose_contract` failed 100 % on Socket-hand (RPi 4).**
+  TreeDecider v2.0.2 sent `terms = {"duration_ticks": 100}` but the Cosmergon
+  backend validator (`contract_manager.validate_terms`) requires the API
+  term-key `"duration"` (the name `duration_ticks` is the ORM column only —
+  not the API field). Empirical anchor: Socket-hand 0/99 success in 24h
+  before the fix. The backend simultaneously corrected the misleading
+  error-hint that suggested `duration_ticks`.
+
 ## [0.2.0] — 2026-05-08
 
 ### Changed (BREAKING — Decider architecture replaced)

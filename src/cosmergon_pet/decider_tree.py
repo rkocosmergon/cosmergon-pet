@@ -347,7 +347,11 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
         return {
             "to_player_id": str(target.player_id),
             "contract_type": contract_types.get(persona, "non_aggression"),
-            "terms": {"duration_ticks": 100},
+            # Backend-Validator (contract_manager.validate_terms) erwartet
+            # API-Term-Key 'duration' (nicht 'duration_ticks' — das ist nur die
+            # ORM-Column, models/contract.py:94). Verifiziert 2026-05-09 nach
+            # Socket-hand 0/99 success-Empirie auf RPi 4 (S178).
+            "terms": {"duration": 100},
             "escrow_amount": 0,
         }
 
