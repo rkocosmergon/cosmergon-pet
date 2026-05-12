@@ -6,6 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-05-12
+
+### Added
+
+- **`create_cube` is now a valid action** in both `decider_tree.VALID_ACTIONS`
+  and `llm_decider.VALID_ACTIONS` allowlists. Pet was structurally blocked from
+  proposing new-cube purchases even though the Cosmergon backend has supported
+  this action for months and `expansionist` persona prompts it as a flagship
+  move. Affordability gating (`can_afford_cube`) and coordinate resolution
+  remain backend concerns. Empirie 2026-05-12: 0 `create_cube` decisions in
+  24 h across all Pet-driven agents despite 78/150 having ≥ 500 k energy. (#28)
+
 ## [0.2.1] — 2026-05-09
 
 ### Fixed
