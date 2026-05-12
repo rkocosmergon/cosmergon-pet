@@ -501,6 +501,7 @@ def test_valid_actions_set_unchanged() -> None:
         "place_cells",
         "evolve",
         "create_field",
+        "create_cube",
         "transfer_energy",
         "market_list",
         "market_buy",
