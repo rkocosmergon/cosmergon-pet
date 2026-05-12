@@ -63,6 +63,7 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "place_cells",
         "evolve",
         "create_field",
+        "create_cube",
         "transfer_energy",
         "market_list",
         "market_buy",
