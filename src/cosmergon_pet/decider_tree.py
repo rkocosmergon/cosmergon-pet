@@ -68,9 +68,54 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "market_list",
         "market_buy",
         "propose_contract",
+        # S204 — Pet-Tree-Decider reagiert auf eingehende Verträge.
+        "accept_contract",
+        "reject_contract",
         "wait",
     }
 )
+
+
+# S204 — Persona-Bias für eingehende Verträge.
+# Tree-Decider akzeptiert/lehnt mit dieser Map ab. Werte 'accept' | 'reject'.
+PERSONA_CONTRACT_BIAS: dict[str, dict[str, str]] = {
+    "scientist": {
+        "trade_agreement": "accept",
+        "alliance": "accept",
+        "non_aggression": "accept",
+        "tribute": "reject",
+    },
+    "warrior": {
+        "non_aggression": "accept",
+        "alliance": "accept",
+        "tribute": "accept",
+        "trade_agreement": "reject",
+    },
+    "trader": {
+        "trade_agreement": "accept",
+        "tribute": "accept",
+        "non_aggression": "accept",
+        "alliance": "reject",
+    },
+    "diplomat": {
+        "alliance": "accept",
+        "trade_agreement": "accept",
+        "non_aggression": "accept",
+        "tribute": "accept",
+    },
+    "farmer": {
+        "trade_agreement": "accept",
+        "non_aggression": "accept",
+        "tribute": "reject",
+        "alliance": "reject",
+    },
+    "expansionist": {
+        "tribute": "accept",
+        "non_aggression": "reject",
+        "alliance": "reject",
+        "trade_agreement": "reject",
+    },
+}
 
 CRITICAL_ENERGY = 100.0  # Sink-Schutz
 FIELD_COST_SAFETY_MARGIN = 1.15  # v1.1.3-Erbe gegen Decide/Execute-Race
@@ -537,6 +582,29 @@ def score_action(
 # --- Decision-Pipeline -------------------------------------------------------
 
 
+def _decide_pending_contract(state: GameState, persona: str) -> tuple[str, dict[str, Any]] | None:
+    """S204 — wenn pending contract addressed an mich, entscheide accept/reject.
+
+    Schaut auf state.pending_contracts (vom SDK in state-poll geliefert).
+    Returnt None wenn keine Entscheidung anliegt (Tree-Decider macht normalen Pfad).
+    """
+    pending = getattr(state, "pending_contracts", None) or []
+    if not pending:
+        return None
+    bias = PERSONA_CONTRACT_BIAS.get(persona, {})
+    for c in pending:
+        ctype = c.get("contract_type") if isinstance(c, dict) else getattr(c, "contract_type", None)
+        cid = c.get("contract_id") if isinstance(c, dict) else getattr(c, "contract_id", None)
+        if not ctype or not cid:
+            continue
+        decision = bias.get(ctype)
+        if decision == "accept":
+            return ("accept_contract", {"contract_id": str(cid), "escrow_amount": 0.0})
+        if decision == "reject":
+            return ("reject_contract", {"contract_id": str(cid)})
+    return None
+
+
 class TreeDecider:
     """GOBT-Pattern decider: Subsistenz-Check + Persona-Charakter-Cycle."""
 
@@ -551,6 +619,13 @@ class TreeDecider:
         persona = (getattr(state, "persona_type", None) or "scientist").lower()
         if persona not in PERSONA_ACTION_POOLS:
             persona = "scientist"  # default
+
+        # S204 Layer 0 — Pending Contracts haben Vorrang (Founder-Direktive
+        # "ALLE dürfen ALLES vereinbaren"). Pro decide()-Call max 1 Vertrags-
+        # Entscheidung, dann normaler Tree-Pfad.
+        contract_decision = _decide_pending_contract(state, persona)
+        if contract_decision is not None:
+            return contract_decision
 
         compass = getattr(state, "compass_preset", None)
 

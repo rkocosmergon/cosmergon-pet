@@ -63,6 +63,10 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "market_list",
         "market_buy",
         "propose_contract",
+        # S204 — eingehende Verträge entscheiden + countern
+        "accept_contract",
+        "reject_contract",
+        "propose_counter",
         "wait",
     }
 )
@@ -898,6 +902,30 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                         f"propose_contract  to={tname}  type={ctype}",
                     )
                 )
+
+    # S204 — eingehende Verträge: pro pending contract eine accept- und eine reject-Zeile.
+    # state.pending_contracts wird vom SDK gefüllt (siehe cosmergon_agent.state.pending_contracts).
+    pending = list(getattr(state, "pending_contracts", []) or [])
+    for c in pending[:5]:  # Cap 5 — Prompt-Größe für 3B-LLMs schonend halten
+        cid = c.get("contract_id") if isinstance(c, dict) else getattr(c, "contract_id", None)
+        ctype = c.get("contract_type") if isinstance(c, dict) else getattr(c, "contract_type", None)
+        if not cid or not ctype:
+            continue
+        cid_str = str(cid)
+        choices.append(
+            _make_choice(
+                "accept_contract",
+                {"contract_id": cid_str, "escrow_amount": 0.0},
+                f"accept_contract  id={cid_str}  type={ctype}",
+            )
+        )
+        choices.append(
+            _make_choice(
+                "reject_contract",
+                {"contract_id": cid_str},
+                f"reject_contract  id={cid_str}  type={ctype}",
+            )
+        )
 
     choices.append(_make_choice("wait", {}, "wait"))
     return choices
