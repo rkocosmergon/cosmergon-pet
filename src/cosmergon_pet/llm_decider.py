@@ -67,6 +67,18 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         "accept_contract",
         "reject_contract",
         "propose_counter",
+        # S206 — Marauder-Mission-System Phase 2 + Item-Pickups
+        "start_mission",
+        "cancel_mission",
+        "collect_spore",
+        "shoot_spore",
+        "pickup_drop",
+        "transfer_inventory",
+        "place_deployable",
+        "claim_field",
+        "heal_holes",
+        "terminal_query",
+        "propose_from_template",
         "wait",
     }
 )

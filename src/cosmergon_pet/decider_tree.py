@@ -71,6 +71,18 @@ VALID_ACTIONS: frozenset[str] = frozenset(
         # S204 — Pet-Tree-Decider reagiert auf eingehende Verträge.
         "accept_contract",
         "reject_contract",
+        # S206 — Marauder-Actions + Mission-System Phase 2.
+        "start_mission",
+        "cancel_mission",
+        "collect_spore",
+        "shoot_spore",
+        "pickup_drop",
+        "transfer_inventory",
+        "place_deployable",
+        "claim_field",
+        "heal_holes",
+        "terminal_query",
+        "propose_from_template",
         "wait",
     }
 )
@@ -276,6 +288,44 @@ def is_valid(state: GameState, action: str) -> bool:
     if action == "transfer_energy":
         return False  # nicht in v2.0.0-Action-Pool
 
+    # S206 Marauder-Mission-System Phase 2.
+    if action == "start_mission":
+        # Marauder muss in recovery sein + keine aktive Mission.
+        marauder_state = getattr(state, "marauder_state", None) or "recovery"
+        if marauder_state != "recovery":
+            return False
+        my_mission = getattr(state, "my_mission", None)
+        if my_mission is not None:
+            return False
+        # gather_spores braucht ein Field mit dormant_spores im Welt-State.
+        # Pre-check via available_mission_types könnte komplexer sein;
+        # hier reicht der State-Check — Backend prüft volle Validität.
+        return True
+    if action == "cancel_mission":
+        return getattr(state, "my_mission", None) is not None
+
+    # S206 Item-Pickups: Pet ohne Marauder-Position-State kann das nicht
+    # autonom triggern (braucht Spore-/Drop-ID + Distance-Check). Tree-Decider
+    # lässt das aus, Pet-User triggert manuell oder via LLM-Decider.
+    if action in ("collect_spore", "shoot_spore", "pickup_drop", "transfer_inventory"):
+        return False  # nicht Tree-autonom
+
+    if action == "place_deployable":
+        # Braucht Inventory + Marauder-Position — Tree-Decider lässt das aus.
+        return False
+
+    if action == "claim_field":
+        # Capture braucht Marauder am vulnerable Target — Mission-Pfad-Domäne.
+        return False
+    if action == "heal_holes":
+        # Eigenes Field mit hole_count > 0 + Energy. Mission-Pfad bevorzugt.
+        return False
+    if action == "terminal_query":
+        # Braucht Marauder am Cube-Center-Terminal — Mission-Pfad.
+        return False
+    if action == "propose_from_template":
+        return len(_contract_targets(state)) > 0 and _energy(state) >= 5_000
+
     return False
 
 
@@ -401,6 +451,75 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
             "escrow_amount": 0,
         }
 
+    # S206 Mission-System.
+    if action == "start_mission":
+        # Persona-Affinity-Default — konzept-mission-system §3 + persona-Reform.
+        mission_by_persona = {
+            "warrior": "gather_spores",  # Arsenal-Aufbau
+            "expansionist": "gather_spores",  # Werkzeuge für Cube-Expansion
+            "farmer": "gather_spores",  # Erntung
+            "scientist": "scout_terminal",  # Intel-Sammeln
+            "trader": "deliver_resource",  # Transport-Geschäft
+            "diplomat": "patrol_field",  # Diplomatischer Rundgang
+        }
+        mission_type = mission_by_persona.get(persona, "gather_spores")
+        if mission_type == "gather_spores":
+            # Field mit den meisten Sporen wäre ideal, aber state-Schema kennt
+            # dormant_spores nicht pro field. Pet schickt eigenes erstes Field
+            # oder None — Server findet via Backend-Resolver das beste Field.
+            fields = _fields(state)
+            return {
+                "mission_type": "gather_spores",
+                "params": {
+                    "field_id": str(fields[0].id) if fields else None,
+                    "max_items": 10,
+                    "duration_ticks": 200,
+                },
+                "reward_energy": 1000,
+            }
+        if mission_type == "scout_terminal":
+            cubes = _universe_cubes(state)
+            return {
+                "mission_type": "scout_terminal",
+                "params": {
+                    "cube_id": str(cubes[0].id) if cubes else None,
+                    "query_type": "wealth_estimate",
+                },
+                "reward_energy": 1000,
+            }
+        # Fallback: gather_spores ohne field_id
+        return {
+            "mission_type": "gather_spores",
+            "params": {"max_items": 10, "duration_ticks": 200},
+            "reward_energy": 1000,
+        }
+
+    if action == "cancel_mission":
+        return {}
+
+    if action == "propose_from_template":
+        targets = _contract_targets(state)
+        if not targets:
+            return {}
+        # Persona-spezifische Template-Wahl (S204 konzept-vertrags-vorlagen).
+        template_by_persona = {
+            "warrior": "T09_ALLIANCE",
+            "diplomat": "T08_NON_AGGRESSION",
+            "trader": "T07_TRADE_AGREEMENT",
+            "farmer": "T06_TRIBUTE",
+            "scientist": "T09_ALLIANCE",
+            "expansionist": "T08_NON_AGGRESSION",
+        }
+        return {
+            "template_id": template_by_persona.get(persona, "T08_NON_AGGRESSION"),
+            "mode": "targeted",
+            "slots": {
+                "partner_id": str(targets[0].player_id),
+                "duration": 100,
+            },
+            "escrow_amount": 0,
+        }
+
     return {}
 
 
@@ -474,6 +593,47 @@ def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dic
 
     if action == "propose_contract":
         return {"energy": -float(params.get("escrow_amount", 0) or 0), "active_contracts": +1}
+
+    # S206 Marauder-Mission-System Phase 2.
+    if action == "start_mission":
+        # Mission blockt marauder für duration_ticks, kostet upfront reward_energy
+        # als Reserve. Goal-Effekt je mission_type: gather_spores → inventory_growth,
+        # capture_field → field_count, heal_holes_field → field_health, etc.
+        mission_type = params.get("mission_type", "")
+        reward = float(params.get("reward_energy", 0) or 0)
+        delta: dict[str, float] = {"energy": -reward, "active_missions": +1}
+        if mission_type == "gather_spores":
+            delta["inventory_growth"] = float(params.get("params", {}).get("max_items") or 10)
+        elif mission_type == "capture_field":
+            delta["field_count"] = +1
+        elif mission_type == "heal_holes_field":
+            delta["field_health"] = +1
+        return delta
+
+    if action == "cancel_mission":
+        return {"active_missions": -1}
+
+    # S206 Item-Pickups + Inventar-Bewegungen.
+    if action in ("collect_spore", "pickup_drop", "shoot_spore"):
+        return {"inventory_growth": +1}
+    if action == "transfer_inventory":
+        return {"inventory_growth": -float(params.get("count", 1) or 1)}
+    if action == "place_deployable":
+        return {"inventory_growth": -1}
+
+    # S206 Capture/Heal/Terminal-Actions.
+    if action == "claim_field":
+        return {"field_count": +1}
+    if action == "heal_holes":
+        return {"field_health": +1, "energy": -100.0}
+    if action == "terminal_query":
+        return {"intel_growth": +1, "energy": -50.0}
+    if action == "propose_from_template":
+        # template-spezifischer escrow im params['escrow_amount']
+        return {
+            "energy": -float(params.get("escrow_amount", 0) or 0),
+            "active_contracts": +1,
+        }
 
     return {}
 

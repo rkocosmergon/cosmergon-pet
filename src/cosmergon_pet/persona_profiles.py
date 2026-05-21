@@ -79,9 +79,11 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         # Forscher: Experimente, evolve, Publikation, Acquire, Forschungs-Kollab
         "place_cells",  # Experiment-Pattern (preset=blinker/toad/glider)
         "evolve",  # Tier-Aufstieg
+        "start_mission",  # S206 scout_terminal — Intel-Sammeln
         "market_list",  # Forschungs-Output veröffentlichen
         "market_buy",  # fremde Patterns acquirieren (cube/field-only)
         "propose_contract",  # research_agreement
+        "propose_from_template",  # S206 T09_ALLIANCE
         # create_field bleibt erlaubt aber niedrig-priorisiert — Subsistenz-Pfad
         "create_field",
     ),
@@ -89,7 +91,9 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         # Trader: Markt-zentriert, Buy/Sell-Spread, Inventar verwenden
         "market_buy",  # Buy-Side Kerngeschäft (alle item_types)
         "market_list",  # Sell-Side Kerngeschäft
+        "start_mission",  # S206 deliver_resource — Transport-Geschäft
         "propose_contract",  # trade_agreement
+        "propose_from_template",  # S206 T07_TRADE_AGREEMENT
         "create_field",  # Inventar-Use (Cubes verbauen)
         "place_cells",  # Inventar-Use (Presets verbauen)
         # evolve niedrig-priorisiert
@@ -97,8 +101,11 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
     ),
     "warrior": (
         # Krieger: Territorium, Defense, Diplomatie als Defensiv-Strategie
+        # S206: gather_spores für Waffen/Munition/Bomben (Arsenal-Aufbau)
+        "start_mission",  # S206 gather_spores — Waffen aus Sporen
         "place_cells",  # Territorial-Markierung (preset=block) + Front-Refill
         "propose_contract",  # non_aggression als Defensiv-Pakt
+        "propose_from_template",  # S206 T09_ALLIANCE
         "evolve",  # Kraftaufbau
         "create_field",  # neues Territorium
         "market_buy",  # nur cube/field
@@ -107,9 +114,12 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
     ),
     "expansionist": (
         # Eroberer: maximale Field-Expansion mit minimaler Pflege
+        # S206: gather_spores für Werkzeuge zur Cube-Expansion
+        "start_mission",  # S206 gather_spores — Werkzeuge sammeln
         "create_field",  # Kerngeschäft
         "place_cells",  # minimal Fill (preset=block)
         "market_buy",  # cube/field acquirieren
+        "propose_from_template",  # S206 T08_NON_AGGRESSION
         # evolve, market_list, propose_contract niedrig
         "evolve",
         "market_list",
@@ -118,6 +128,8 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
     "diplomat": (
         # Vermittler: Verträge primär, Goodwill via Markt
         "propose_contract",  # Kerngeschäft
+        "propose_from_template",  # S206 T08_NON_AGGRESSION
+        "start_mission",  # S206 patrol_field — diplomatischer Rundgang
         "market_buy",  # Goodwill via cheap-Listings
         "place_cells",  # minimal
         "market_list",  # Surplus moderat
@@ -127,9 +139,12 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
     ),
     "farmer": (
         # Landwirt: Felder pflegen, evolve, Surplus listen
+        # S206: gather_spores als Erntung passt thematisch
         "place_cells",  # Kerngeschäft (cells halten)
         "evolve",  # Tier-Effizienz
+        "start_mission",  # S206 gather_spores
         "market_list",  # Surplus monetisieren
+        "propose_from_template",  # S206 T06_TRIBUTE / T07_TRADE_AGREEMENT
         "market_buy",  # nur sehr cheap (Schnäppchen)
         "create_field",  # gelegentliche Erweiterung
         # propose_contract niedrig
@@ -141,38 +156,50 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
 PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
     "scientist": {
         "evolve": +0.3,  # Forscher-Kerngeschäft
+        "start_mission": +0.15,  # S206 scout_terminal (Intel-Sammeln)
         "market_list": +0.1,  # Publish ist gut
         "place_cells": +0.0,  # neutral (Experiment ODER Pflege)
         "market_buy": +0.0,  # Acquire ist neutral
         "propose_contract": -0.1,  # gelegentlich, nicht reflexartig
+        "propose_from_template": -0.05,
         "create_field": -0.2,  # nur bei Bedarf, nicht aggressiv
     },
     "trader": {
         "market_buy": +0.3,  # Buy-Side ist Kerngeschäft
         "market_list": +0.2,  # Sell-Side ist Kerngeschäft
-        "propose_contract": +0.1,  # trade_agreement ist Trader-Strategie
+        "start_mission": +0.15,  # S206 deliver_resource (Transport-Geschäft)
+        "propose_contract": +0.1,  # trade_agreement
+        "propose_from_template": +0.1,  # S206 T07_TRADE_AGREEMENT
         "create_field": +0.0,  # neutral (Inventar-Use)
         "place_cells": +0.0,  # neutral (Inventar-Use)
         "evolve": -0.3,  # nicht Trader-Kerngeschäft
     },
     "warrior": {
+        # S206: gather_spores für Arsenal-Aufbau (Waffen/Bomben aus Sporen)
+        "start_mission": +0.3,  # Arsenal über gather_spores
         "place_cells": +0.3,  # Territorium markieren + Front-Refill
         "propose_contract": +0.2,  # non_aggression ist Defensiv-Strategie
+        "propose_from_template": +0.1,  # S206 T09_ALLIANCE
         "evolve": +0.0,  # neutral
         "create_field": +0.0,  # neutral
         "market_buy": -0.1,  # nur cube/field zum Bau
         "market_list": -0.2,  # Krieger handelt nicht
     },
     "expansionist": {
+        # S206: gather_spores für Cube-Expansions-Werkzeuge
+        "start_mission": +0.3,  # gather_spores priorisiert
         "create_field": +0.3,  # Kerngeschäft
         "place_cells": +0.1,  # minimal Fill
         "market_buy": +0.0,  # cube acquire
+        "propose_from_template": +0.05,  # T08_NON_AGGRESSION
         "evolve": -0.2,
         "market_list": -0.2,
         "propose_contract": -0.3,
     },
     "diplomat": {
         "propose_contract": +0.3,  # Kerngeschäft
+        "propose_from_template": +0.2,  # S206 T08_NON_AGGRESSION
+        "start_mission": +0.1,  # patrol_field
         "market_buy": +0.1,  # Goodwill
         "place_cells": +0.0,
         "market_list": +0.0,
@@ -182,7 +209,9 @@ PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
     "farmer": {
         "place_cells": +0.3,  # Pflege ist Kerngeschäft
         "evolve": +0.2,  # Tier-Effizienz
+        "start_mission": +0.15,  # S206 gather_spores (Erntung)
         "market_list": +0.1,  # Surplus
+        "propose_from_template": +0.05,  # T06_TRIBUTE
         "market_buy": +0.0,  # Schnäppchen
         "create_field": +0.0,  # gelegentlich
         "propose_contract": -0.2,  # Bauer ist nicht Diplomat
