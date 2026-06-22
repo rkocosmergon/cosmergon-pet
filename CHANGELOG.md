@@ -6,6 +6,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-22
+
+### Added
+
+- **Contract-aware TreeDecider and LLM-Decider.** Both `decider_tree.py` and
+  `llm_decider.py` now handle incoming contract proposals instead of ignoring
+  them. `TreeDecider` adds a Layer 0 that pre-empts all other decisions when
+  pending contracts are present, using a `PERSONA_CONTRACT_BIAS` map (6
+  personas × 4 contract types) to accept or reject. `LLMDecider` extends
+  `_build_action_choices` to surface each pending contract as an explicit
+  `accept_contract` / `reject_contract` choice line so the LLM sees the offer
+  in context. Both add `propose_counter` to their `VALID_ACTIONS` sets.
+  Follows Cosmergon Founder Directive S204: "all agents may negotiate any
+  contract type."
+
+### Security
+
+- Removed hardcoded internal LAN IP from `scripts/local-experiment.py`
+  — changed argparse default to `localhost`.
+- Abstracted private email pattern in `scripts/check-whitelist.sh`.
+
 ## [0.2.2] — 2026-05-12
 
 ### Added
