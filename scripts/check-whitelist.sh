@@ -121,8 +121,8 @@ echo ""
 # ================================================================
 echo "--- 5. Persoenliche E-Mails ---"
 # Erlaubt: contact@cosmergon.de, security@cosmergon.de
-# Verboten: private E-Mails (rkmx, rkomx, privat), generische Provider
-PRIV_EMAIL='rk@rkmx\.de|rk@rkomx\.com|@gmail\.com|@outlook\.com|@web\.de|@gmx\.'
+# Verboten: private E-Mails des Gründers (nicht-kosm. Domains), generische Provider
+PRIV_EMAIL='@rkmx\.de|@rkomx\.com|@gmail\.com|@outlook\.com|@web\.de|@gmx\.'
 if HITS=$(git -C "$REPO" grep -niE "$PRIV_EMAIL" -- . ':!scripts/check-whitelist.sh' 2>/dev/null); then
     if [ -n "$HITS" ]; then
         echo "BLOCKER: Persoenliche E-Mail-Adresse:"

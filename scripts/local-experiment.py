@@ -228,8 +228,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default="llama3.2:3b")
     parser.add_argument(
         "--ollama-url",
-        default="http://192.168.178.190:11434",
-        help="Mac-Mini Ollama URL (default: 192.168.178.190:11434)",
+        default="http://localhost:11434",
+        help="Ollama base URL (default: http://localhost:11434)",
     )
     parser.add_argument(
         "--output",
