@@ -397,17 +397,29 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     items = ml.get("sellable_items") or {}
     if not isinstance(items, dict) or not items:
         return None
-    # Referenzpreise je Typ: billigstes aktives Listing im Markt-Briefing.
+    # Referenzpreise je Typ — bevorzugt vom Server (`reference_prices`,
+    # Backend >= v1.64.31: billigstes aktives Fremd-Listing je Typ; das
+    # Markt-Briefing traegt nur die 20 billigsten Listings insgesamt und
+    # laesst hochpreisige Typen wie mega_bomb unsichtbar). Fallback: das
+    # Briefing selbst.
     referenz: dict[str, float] = {}
-    for b in _market_buyable(state):
-        it = getattr(b, "item_type", None)
-        preis = getattr(b, "price_energy", None)
-        try:
-            preis_f = float(preis)
-        except (TypeError, ValueError):
-            continue
-        if it and (it not in referenz or preis_f < referenz[it]):
-            referenz[it] = preis_f
+    server_ref = ml.get("reference_prices")
+    if isinstance(server_ref, dict):
+        for it, preis in server_ref.items():
+            try:
+                referenz[str(it)] = float(preis)
+            except (TypeError, ValueError):
+                continue
+    if not referenz:
+        for b in _market_buyable(state):
+            it = getattr(b, "item_type", None)
+            preis = getattr(b, "price_energy", None)
+            try:
+                preis_f = float(preis)
+            except (TypeError, ValueError):
+                continue
+            if it and (it not in referenz or preis_f < referenz[it]):
+                referenz[it] = preis_f
     # Wertvollstes referenzierbares Item zuerst — totes Kapital zu Geld.
     kandidaten = [(referenz[t], t) for t, n in items.items() if t in referenz and (n or 0) > 0]
     if not kandidaten:

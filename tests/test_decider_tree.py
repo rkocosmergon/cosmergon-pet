@@ -288,3 +288,20 @@ def test_backoff_sperrt_nach_drei_fehlschlaegen_und_laeuft_ab() -> None:
     b.melde("market_list", success=False)
     b.melde("market_list", success=False)
     assert "market_list" not in b.blocked()
+
+
+def test_market_list_item_mit_server_referenzpreis() -> None:
+    """Backend >= v1.64.31 liefert reference_prices — die gewinnen gegen das
+    Briefing (das nur die 20 billigsten Listings traegt und mega_bomb nie)."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    actions = _ml_actions(available=True, items={"mega_bomb": 7})
+    actions["market_list"]["reference_prices"] = {"mega_bomb": 100_000.0}
+    state = _make_state(energy=9_953, available_actions=actions)
+    # Briefing bewusst leer — der Serverpreis muss reichen.
+    plan = _market_list_plan(state)
+    assert plan == {
+        "item_type": "mega_bomb",
+        "item_data": {"count": 1},
+        "price_energy": 95_000,
+    }
