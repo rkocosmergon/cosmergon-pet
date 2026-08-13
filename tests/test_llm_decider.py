@@ -497,6 +497,11 @@ def test_valid_actions_set_unchanged() -> None:
     "Available actions" list per state — but the allowlist still gates them.
     """
     mod = _import_or_skip()
+    # S297: guard re-cut. The S204 contract actions and S206 marauder/mission
+    # actions were added to the allowlist deliberately (CHANGELOG 0.3.0), but
+    # this guard was not updated — it sat red, unseen, because the pet CI runs
+    # no pytest. The guard's job stays: ANY allowlist change must be a
+    # conscious edit here, not a drive-by.
     expected = {
         "place_cells",
         "evolve",
@@ -507,6 +512,22 @@ def test_valid_actions_set_unchanged() -> None:
         "market_buy",
         "propose_contract",
         "wait",
+        # S204 — contract awareness:
+        "accept_contract",
+        "reject_contract",
+        "propose_counter",
+        "propose_from_template",
+        # S206 — marauder + mission system:
+        "start_mission",
+        "cancel_mission",
+        "collect_spore",
+        "shoot_spore",
+        "pickup_drop",
+        "transfer_inventory",
+        "place_deployable",
+        "claim_field",
+        "heal_holes",
+        "terminal_query",
     }
     assert mod.VALID_ACTIONS == expected
 

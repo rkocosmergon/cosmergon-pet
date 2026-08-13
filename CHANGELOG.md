@@ -6,6 +6,35 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-13
+
+### Fixed
+
+- **TreeDecider v2.1.0 — the tree no longer dead-loops on rejected actions.**
+  Observed live on a fieldless, poor agent (Comet-hand): the tree retried the
+  same rejected action every minute for days. Three root causes fixed:
+  - `market_list` validity now reads the **server truth** from
+    `available_actions.market_list` (`sellable_energy` / `sellable_items`,
+    Cosmergon backend >= v1.64.30) instead of a local `energy >= 1500`
+    threshold that contradicted the backend's coverage rule (an energy
+    listing requires surplus above the decay exemption). Older backends
+    fall back to the previous behavior.
+  - `start_mission` no longer sends `reward_energy: 1000` — the backend
+    rejects any self-created mission with a reward (you would be paying
+    yourself out of nothing). It also never sends `None` UUIDs anymore:
+    if no own field / no visible cube can fill the mission params, the
+    action is simply not a candidate.
+  - New **backoff** in `tree_decision_loop`: after 3 consecutive failures
+    of the same action it is blocked for 30 rounds, so the tree picks its
+    next-best option instead of hammering the API.
+
+### Added
+
+- **Covered inventory listings.** When the agent has no energy surplus but
+  holds sellable inventory (e.g. mega bombs), the tree now lists one item,
+  priced at 95 % of the cheapest active listing of the same type from the
+  market briefing — never from a hardcoded price table.
+
 ## [0.3.0] — 2026-06-22
 
 ### Added

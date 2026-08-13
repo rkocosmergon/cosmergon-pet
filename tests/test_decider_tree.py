@@ -149,3 +149,142 @@ def test_run_pet_rejects_both_backends() -> None:
 
     with pytest.raises(ValueError, match="mutually exclusive"):
         asyncio.run(_call())
+
+
+# ---------------------------------------------------------------------------
+# v2.1.0 (S297) — Server-Wahrheit, Selbstbelohnungs-Fix, Backoff.
+# Anlass: Comet-hand (feldlos, 9.953 Energie) wiederholte tagelang minuetlich
+# dieselbe abgelehnte Aktion. Alle Tests hier sind rot gegen v2.0.2.
+# ---------------------------------------------------------------------------
+
+
+def _ml_actions(
+    *, available: bool, energy: float = 0.0, items: dict | None = None
+) -> dict[str, dict[str, Any]]:
+    return {
+        "market_list": {
+            "available": available,
+            "sellable_energy": energy,
+            "sellable_items": items or {},
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_market_list_respektiert_server_nein() -> None:
+    """Server sagt available=false (kein Ueberschuss, kein Inventar) —
+    der Baum darf market_list NICHT waehlen (v2.0.2 tat es: energy>=1500)."""
+    from cosmergon_pet.decider_tree import is_valid
+
+    state = _make_state(energy=9_953, available_actions=_ml_actions(available=False))
+    assert is_valid(state, "market_list") is False
+    action, _ = await TreeDecider().decide(state)
+    assert action != "market_list"
+
+
+def test_market_list_energie_bei_ueberschuss() -> None:
+    """Server meldet verkaeufliche Energie → klassisches Energie-Listing."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    state = _make_state(
+        energy=20_000,
+        available_actions=_ml_actions(available=True, energy=2_500),
+    )
+    plan = _market_list_plan(state)
+    assert plan == {"price_energy": 450}  # scientist
+
+
+def test_market_list_item_mit_marktreferenz() -> None:
+    """Kein Ueberschuss, aber gedecktes Inventar: 1 Item zu 95 % des
+    billigsten aktiven Listings desselben Typs."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    state = _make_state(
+        energy=9_953,
+        available_actions=_ml_actions(available=True, items={"mega_bomb": 7}),
+    )
+    state.world_briefing.market.buyable = [
+        SimpleNamespace(item_type="mega_bomb", price_energy=100_000.0),
+        SimpleNamespace(item_type="mega_bomb", price_energy=120_000.0),
+    ]
+    plan = _market_list_plan(state)
+    assert plan == {
+        "item_type": "mega_bomb",
+        "item_data": {"count": 1},
+        "price_energy": 95_000,
+    }
+
+
+def test_market_list_item_ohne_referenzpreis_wird_nicht_gelistet() -> None:
+    """Ohne Vergleichspreis am Markt wird nicht geraten — kein Listing."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    state = _make_state(
+        energy=9_953,
+        available_actions=_ml_actions(available=True, items={"bus_ticket_x": 1}),
+    )
+    assert _market_list_plan(state) is None
+
+
+def test_market_list_alter_server_fallback() -> None:
+    """Backend ohne sellable_*-Schluessel: altes Verhalten (Schwelle 1500)."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    state = _make_state(energy=9_953, available_actions={})
+    assert _market_list_plan(state) == {"price_energy": 450}
+
+
+def test_start_mission_ohne_selbstbelohnung_und_ohne_none_ids() -> None:
+    """reward_energy muss 0 sein (S278-Tor) und params duerfen keine
+    None-UUIDs tragen; feldlos + cubelos ⇒ kein Kandidat."""
+    from cosmergon_pet.decider_tree import is_valid, resolve_action_params
+
+    mit_feld = _make_state(fields=[SimpleNamespace(id="33333333-3333-3333-3333-333333333333")])
+    params = resolve_action_params(mit_feld, "start_mission", "warrior")
+    assert params["reward_energy"] == 0
+    assert params["params"]["field_id"] == "33333333-3333-3333-3333-333333333333"
+
+    feldlos = _make_state(fields=[], cubes=[])
+    assert resolve_action_params(feldlos, "start_mission", "warrior") == {}
+    assert is_valid(feldlos, "start_mission") is False
+
+
+@pytest.mark.asyncio
+async def test_decide_respektiert_blocked() -> None:
+    """Eine gesperrte Aktion wird nicht gewaehlt — der Baum nimmt die
+    naechstbeste statt zu haemmern."""
+    field = SimpleNamespace(
+        id="44444444-4444-4444-4444-444444444444",
+        active_cell_count=5,
+        entity_tier=1,
+        reife_score=0,
+        entity_type="still_life",
+    )
+    state = _make_state(energy=10_000, fields=[field])
+    decider = TreeDecider()
+    frei, _ = await decider.decide(state)
+    geblockt, _ = await decider.decide(state, blocked=frozenset({frei}))
+    assert geblockt != frei
+
+
+def test_backoff_sperrt_nach_drei_fehlschlaegen_und_laeuft_ab() -> None:
+    from cosmergon_pet.tree_loop import BACKOFF_ROUNDS, _Backoff
+
+    b = _Backoff()
+    for _ in range(3):
+        b.naechste_runde()
+        b.melde("market_list", success=False)
+    assert "market_list" in b.blocked()
+    # Erfolg einer ANDEREN Aktion aendert nichts an der Sperre
+    b.melde("place_cells", success=True)
+    assert "market_list" in b.blocked()
+    # Sperre laeuft nach BACKOFF_ROUNDS Runden ab
+    for _ in range(BACKOFF_ROUNDS):
+        b.naechste_runde()
+    assert "market_list" not in b.blocked()
+    # Erfolg der Aktion selbst setzt den Zaehler zurueck
+    b.melde("market_list", success=False)
+    b.melde("market_list", success=True)
+    b.melde("market_list", success=False)
+    b.melde("market_list", success=False)
+    assert "market_list" not in b.blocked()

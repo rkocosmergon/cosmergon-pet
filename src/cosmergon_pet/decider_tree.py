@@ -1,7 +1,23 @@
-"""TreeDecider v2.0.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.1.0 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
-VENDORED from ``cosmergon-decider-tree`` v2.0.2 (private cosmergon repo,
-``research/decider-cluster/decider-tree/``). Source-of-truth lives there.
+VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
+``research/decider-cluster/decider-tree/``).
+⚠ S297: die Research-Quelle steht auf v2.0.0, dieser Vendor war schon vorher
+(v2.0.2) VORAUS — „Source-of-truth lives there" ist derzeit nicht wahr.
+Rueck-Sync ist ein offener TODO-Punkt im cosmergon-Repo.
+
+v2.1.0 changes (S297, am Live-Fall Comet-hand):
+  - market_list liest die SERVER-Wahrheit (``available_actions.market_list``:
+    ``sellable_energy`` + ``sellable_items``, Backend >= v1.64.30) statt einer
+    eigenen 1500er-Schwelle, die der S278-Deckungsregel widersprach.
+  - market_list kann gedeckte INVENTAR-Items listen (Preis = 95 % des
+    billigsten aktiven Listings desselben Typs — nie eine eigene Konstante).
+  - start_mission: ``reward_energy`` immer 0 (S278-Selbstbelohnungs-Tor lehnt
+    jede Selbst-Mission mit reward > 0 ab) + Params nur mit echten UUIDs
+    (None-IDs waren garantierte 422).
+  - ``decide(state, blocked=...)``: der Loop kann Aktionen nach wiederholten
+    identischen Fehlschlaegen temporaer sperren (Backoff im Loop, Decider
+    bleibt zustandslos).
 
 This is a **Major architecture change** vs Pet 0.1.33 (which had Tree
 v1.1.4 first-match-cascading). v2.0.2 is GOBT (Goal-Oriented Behavior
@@ -278,9 +294,11 @@ def is_valid(state: GameState, action: str) -> bool:
         return False
 
     if action == "market_list":
-        # Pet braucht etwas zum Listen + minimum-Energy für list-fee
-        # Vereinfacht: list_threshold persona-spezifisch, hier minimal 1500
-        return _energy(state) >= 1_500
+        # v2.1.0 (S297): Server-Wahrheit statt eigener Schwelle — siehe
+        # _market_list_plan. Die alte Regel (energy >= 1500) widersprach der
+        # S278-Deckungsregel des Backends: Comet-hand (9.953 Guthaben, unter
+        # dem Zerfalls-Freibetrag) listete minutenlang ins 400.
+        return _market_list_plan(state) is not None
 
     if action == "propose_contract":
         return len(_contract_targets(state)) > 0 and _energy(state) >= 5_000
@@ -297,10 +315,11 @@ def is_valid(state: GameState, action: str) -> bool:
         my_mission = getattr(state, "my_mission", None)
         if my_mission is not None:
             return False
-        # gather_spores braucht ein Field mit dormant_spores im Welt-State.
-        # Pre-check via available_mission_types könnte komplexer sein;
-        # hier reicht der State-Check — Backend prüft volle Validität.
-        return True
+        # v2.1.0: nur gültig, wenn die Params auch FUELLBAR sind (echte UUIDs) —
+        # ein feldloser Agent in voller Welt hat keinen Missions-Kandidaten,
+        # und ein {}-Versuch wäre ein garantierter 422.
+        persona_v = (getattr(state, "persona_type", None) or "scientist").lower()
+        return bool(resolve_action_params(state, "start_mission", persona_v))
     if action == "cancel_mission":
         return getattr(state, "my_mission", None) is not None
 
@@ -330,6 +349,76 @@ def is_valid(state: GameState, action: str) -> bool:
 
 
 # --- Action-Parameter-Resolver -----------------------------------------------
+
+
+_PERSONA_ENERGY_LIST_PRICE: dict[str, int] = {
+    "trader": 500,
+    "scientist": 450,
+    "warrior": 400,
+    "expansionist": 400,
+    "diplomat": 450,
+    "farmer": 450,
+}
+
+
+def _market_list_plan(state: GameState) -> dict[str, Any] | None:
+    """Was KANN dieser Agent listen? Eine Quelle für is_valid + resolve (v2.1.0).
+
+    Liest die Server-Wahrheit aus ``available_actions["market_list"]``
+    (Backend >= v1.64.30: ``available`` + ``sellable_energy`` +
+    ``sellable_items``). Energie nur bei Überschuss über dem
+    Zerfalls-Freibetrag (S278-Deckungsregel); gedeckte Inventar-Items gehen
+    immer — Preis kommt vom billigsten aktiven Listing desselben Typs im
+    Markt-Briefing (5 % darunter), NIE aus einer eigenen Konstante (die
+    würde gegen die Welt driften). Ohne Referenzpreis wird nicht gelistet.
+
+    Ältere Backends ohne die sellable_*-Schlüssel: alte 1500er-Schwelle.
+    """
+    persona = (getattr(state, "persona_type", None) or "scientist").lower()
+    energy_price = _PERSONA_ENERGY_LIST_PRICE.get(persona, 450)
+
+    actions = getattr(state, "available_actions", None) or {}
+    ml = actions.get("market_list") if isinstance(actions, dict) else None
+    if not isinstance(ml, dict) or "sellable_energy" not in ml:
+        # Alter Server — keine Wahrheit verfügbar, altes Verhalten.
+        if _energy(state) >= 1_500:
+            return {"price_energy": energy_price}
+        return None
+
+    if not ml.get("available"):
+        return None
+
+    try:
+        if float(ml.get("sellable_energy") or 0) > 0:
+            return {"price_energy": energy_price}
+    except (TypeError, ValueError):
+        pass
+
+    items = ml.get("sellable_items") or {}
+    if not isinstance(items, dict) or not items:
+        return None
+    # Referenzpreise je Typ: billigstes aktives Listing im Markt-Briefing.
+    referenz: dict[str, float] = {}
+    for b in _market_buyable(state):
+        it = getattr(b, "item_type", None)
+        preis = getattr(b, "price_energy", None)
+        try:
+            preis_f = float(preis)
+        except (TypeError, ValueError):
+            continue
+        if it and (it not in referenz or preis_f < referenz[it]):
+            referenz[it] = preis_f
+    # Wertvollstes referenzierbares Item zuerst — totes Kapital zu Geld.
+    kandidaten = [(referenz[t], t) for t, n in items.items() if t in referenz and (n or 0) > 0]
+    if not kandidaten:
+        return None
+    kandidaten.sort(reverse=True)
+    ref_preis, item_type = kandidaten[0]
+    return {
+        "item_type": item_type,
+        "item_data": {"count": 1},
+        "price_energy": max(round(ref_preis * 0.95), 10),
+    }
 
 
 def _fewest_cells_field(state: GameState) -> Any | None:
@@ -416,16 +505,9 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
         return {"listing_id": str(b.listing_id)} if b else {}
 
     if action == "market_list":
-        # Persona-spezifischer Listenpreis (default 450)
-        prices = {
-            "trader": 500,
-            "scientist": 450,
-            "warrior": 400,
-            "expansionist": 400,
-            "diplomat": 450,
-            "farmer": 450,
-        }
-        return {"price_energy": prices.get(persona, 450)}
+        # v2.1.0: eine Quelle mit is_valid — Energie bei Überschuss, sonst
+        # gedecktes Inventar-Item zum Markt-Referenzpreis.
+        return _market_list_plan(state) or {}
 
     if action == "propose_contract":
         targets = _contract_targets(state)
@@ -463,35 +545,37 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
             "diplomat": "patrol_field",  # Diplomatischer Rundgang
         }
         mission_type = mission_by_persona.get(persona, "gather_spores")
-        if mission_type == "gather_spores":
-            # Field mit den meisten Sporen wäre ideal, aber state-Schema kennt
-            # dormant_spores nicht pro field. Pet schickt eigenes erstes Field
-            # oder None — Server findet via Backend-Resolver das beste Field.
-            fields = _fields(state)
-            return {
-                "mission_type": "gather_spores",
-                "params": {
-                    "field_id": str(fields[0].id) if fields else None,
-                    "max_items": 10,
-                    "duration_ticks": 200,
-                },
-                "reward_energy": 1000,
-            }
+        # v2.1.0 (S297): reward_energy IMMER 0 — das Backend lehnt jede
+        # selbst erstellte Mission mit reward > 0 ab (S278-Selbstbelohnungs-
+        # Tor: „you would be paying yourself out of nothing"). Die 1000 aus
+        # v2.0.x waren ein garantierter 400.
+        # Und: params muessen FUELLBAR sein — das Schema verlangt echte UUIDs,
+        # ein None-field_id/cube_id ist ein garantierter 422. Lieber gar kein
+        # Kandidat als ein toter.
         if mission_type == "scout_terminal":
             cubes = _universe_cubes(state)
-            return {
-                "mission_type": "scout_terminal",
-                "params": {
-                    "cube_id": str(cubes[0].id) if cubes else None,
-                    "query_type": "wealth_estimate",
-                },
-                "reward_energy": 1000,
-            }
-        # Fallback: gather_spores ohne field_id
+            if not cubes:
+                mission_type = "gather_spores"  # Fallback auf den Feld-Weg
+            else:
+                return {
+                    "mission_type": "scout_terminal",
+                    "params": {
+                        "cube_id": str(cubes[0].id),
+                        "query_type": "wealth_estimate",
+                    },
+                    "reward_energy": 0,
+                }
+        fields = _fields(state)
+        if not fields:
+            return {}
         return {
             "mission_type": "gather_spores",
-            "params": {"max_items": 10, "duration_ticks": 200},
-            "reward_energy": 1000,
+            "params": {
+                "field_id": str(fields[0].id),
+                "max_items": 10,
+                "duration_ticks": 200,
+            },
+            "reward_energy": 0,
         }
 
     if action == "cancel_mission":
@@ -766,12 +850,19 @@ def _decide_pending_contract(state: GameState, persona: str) -> tuple[str, dict[
 
 
 class TreeDecider:
-    """GOBT-Pattern decider: Subsistenz-Check + Persona-Charakter-Cycle."""
+    """GOBT-Pattern decider: Subsistenz-Check + Persona-Charakter-Cycle.
+
+    v2.1.0 (S297): ``decide`` nimmt optional ``blocked`` — Aktionen, die der
+    aufrufende Loop nach wiederholten identischen Fehlschlägen vorübergehend
+    gesperrt hat (Backoff lebt im Loop, der Decider bleibt zustandslos).
+    """
 
     name: str = "tree"
-    version: str = "2.0.2"
+    version: str = "2.1.0"
 
-    async def decide(self, state: GameState) -> tuple[str, dict[str, Any]]:
+    async def decide(
+        self, state: GameState, blocked: frozenset[str] = frozenset()
+    ) -> tuple[str, dict[str, Any]]:
         # Critical-Energy → wait (Sink-Schutz, vor allen Layern)
         if _energy(state) < CRITICAL_ENERGY:
             return ("wait", {})
@@ -811,6 +902,8 @@ class TreeDecider:
         for action in action_pool:
             if action not in VALID_ACTIONS:
                 continue
+            if action in blocked:
+                continue  # v2.1.0 Backoff — der Loop hat sie gesperrt
             if not is_valid(state, action):
                 continue
             params = resolve_action_params(state, action, persona)

@@ -36,6 +36,47 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_S = 60.0
 
+# S297 Backoff: nach N identischen Fehlschlaegen in Folge wird die Aktion fuer
+# BACKOFF_ROUNDS Runden gesperrt. Anlass: Comet-hand hat TAGELANG minuetlich
+# dieselbe abgelehnte Aktion wiederholt (erst place_cells auf Denkmal-Felder,
+# dann market_list ohne Ueberschuss) — ein identischer Fehlschlag traegt ab dem
+# dritten Mal keine Information mehr, kostet aber je einen API-Call und einen
+# Log-Eintrag pro Minute.
+BACKOFF_AFTER_FAILURES = 3
+BACKOFF_ROUNDS = 30
+
+
+class _Backoff:
+    """Sperrt Aktionen nach wiederholten Fehlschlaegen fuer einige Runden."""
+
+    def __init__(self) -> None:
+        self._fails: dict[str, int] = {}
+        self._blocked_until_round: dict[str, int] = {}
+        self._round = 0
+
+    def naechste_runde(self) -> None:
+        self._round += 1
+
+    def blocked(self) -> frozenset[str]:
+        return frozenset(a for a, bis in self._blocked_until_round.items() if bis > self._round)
+
+    def melde(self, action: str, success: bool) -> None:
+        if success:
+            self._fails.pop(action, None)
+            self._blocked_until_round.pop(action, None)
+            return
+        n = self._fails.get(action, 0) + 1
+        self._fails[action] = n
+        if n >= BACKOFF_AFTER_FAILURES:
+            self._blocked_until_round[action] = self._round + BACKOFF_ROUNDS
+            self._fails.pop(action, None)
+            logger.info(
+                "backoff: %s nach %d Fehlschlaegen fuer %d Runden gesperrt",
+                action,
+                n,
+                BACKOFF_ROUNDS,
+            )
+
 
 def _redact_params(params: dict[str, Any]) -> dict[str, Any]:
     """Same hygiene as `llm_decider._redact_params` — never log UUIDs/amounts verbatim."""
@@ -47,6 +88,7 @@ async def _one_tree_decision(
     agent: CosmergonAgent,
     decider: TreeDecider,
     on_decision: Any | None,
+    backoff: _Backoff | None = None,
 ) -> None:
     """Single decision round — never raises."""
     state = getattr(agent, "state", None)
@@ -56,9 +98,10 @@ async def _one_tree_decision(
         logger.debug("tree_decision: agent.state still None, skip")
         return
 
+    blocked = backoff.blocked() if backoff is not None else frozenset()
     t0 = time.monotonic()
     try:
-        action, params = await decider.decide(state)
+        action, params = await decider.decide(state, blocked=blocked)
     except Exception as e:
         logger.warning("tree decider failed: %s", e)
         if on_decision is not None:
@@ -92,6 +135,9 @@ async def _one_tree_decision(
     except Exception as e:
         logger.warning("agent.act(%s) failed: %s", action, e)
         success = False
+
+    if backoff is not None:
+        backoff.melde(action, success)
 
     logger.info(
         "tree action=%s params=%s success=%s decided_in=%.3fs",
@@ -129,14 +175,16 @@ async def tree_decision_loop(
             — used by the Pet display to flash a "decider acted" indicator.
     """
     stop = stop or asyncio.Event()
+    backoff = _Backoff()
     logger.info(
         "tree_decision_loop started decider=%s interval=%.1fs",
         getattr(decider, "name", "tree"),
         interval_s,
     )
     while not stop.is_set():
+        backoff.naechste_runde()
         try:
-            await _one_tree_decision(agent, decider, on_decision)
+            await _one_tree_decision(agent, decider, on_decision, backoff)
         except Exception:
             # Catch-all: nothing in this loop is allowed to kill the Pet.
             logger.warning("tree_decision_loop iteration failed", exc_info=True)
