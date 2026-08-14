@@ -239,6 +239,63 @@ def _persona_preferred_preset(state: GameState) -> str:
 # --- Validity-Filter ---------------------------------------------------------
 
 
+def _evolve_moeglich(state: GameState) -> bool:
+    """Existiert ein Field, das evolve-eligible UND bezahlbar ist?"""
+    REIFE_THRESHOLDS = {2: 100, 3: 500, 4: 2000, 5: 10000}
+    TYPE_FOR_TIER = {2: "oscillator", 3: "spaceship", 4: "gun", 5: "breeder"}
+    energy = _energy(state)
+    for f in _fields(state):
+        tier = getattr(f, "entity_tier", 0) or 0
+        if not isinstance(tier, int) or tier <= 0 or tier >= 5:
+            continue
+        next_tier = tier + 1
+        reife = getattr(f, "reife_score", 0) or 0
+        if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
+            continue
+        required_type = TYPE_FOR_TIER.get(next_tier)
+        if required_type and getattr(f, "entity_type", None) != required_type:
+            continue
+        cost = EVOLUTION_COST_BY_TIER.get(tier, 0)
+        if energy < cost:
+            continue
+        return True
+    return False
+
+
+def _market_buy_moeglich(state: GameState) -> bool:
+    """Gibt es ein persona-erlaubtes, bezahlbares Listing?"""
+    persona = (getattr(state, "persona_type", None) or "scientist").lower()
+    allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
+    energy = _energy(state)
+    for b in _market_buyable(state):
+        if allowed is not None:
+            item_type = getattr(b, "item_type", None)
+            if item_type not in allowed:
+                continue
+        price = getattr(b, "price_energy", None)
+        if price is None:
+            continue
+        try:
+            if float(price) <= energy:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def _start_mission_moeglich(state: GameState) -> bool:
+    """Marauder in recovery, keine aktive Mission, Params FUELLBAR (v2.1.0:
+    echte UUIDs — ein feldloser Agent in voller Welt hat keinen Kandidaten,
+    und ein {}-Versuch wäre ein garantierter 422)."""
+    marauder_state = getattr(state, "marauder_state", None) or "recovery"
+    if marauder_state != "recovery":
+        return False
+    if getattr(state, "my_mission", None) is not None:
+        return False
+    persona_v = (getattr(state, "persona_type", None) or "scientist").lower()
+    return bool(resolve_action_params(state, "start_mission", persona_v))
+
+
 def is_valid(state: GameState, action: str) -> bool:
     """Vor-Backend-Validity-Check. Verhindert dass Tree eine Action wählt,
     die das Backend mit 400 ablehnen würde."""
@@ -258,45 +315,10 @@ def is_valid(state: GameState, action: str) -> bool:
         return _energy(state) >= _PRESET_COST["block"]
 
     if action == "evolve":
-        # Existiert ein Field das evolve-eligible ist?
-        REIFE_THRESHOLDS = {2: 100, 3: 500, 4: 2000, 5: 10000}
-        TYPE_FOR_TIER = {2: "oscillator", 3: "spaceship", 4: "gun", 5: "breeder"}
-        energy = _energy(state)
-        for f in _fields(state):
-            tier = getattr(f, "entity_tier", 0) or 0
-            if not isinstance(tier, int) or tier <= 0 or tier >= 5:
-                continue
-            next_tier = tier + 1
-            reife = getattr(f, "reife_score", 0) or 0
-            if reife < REIFE_THRESHOLDS.get(next_tier, 999_999):
-                continue
-            required_type = TYPE_FOR_TIER.get(next_tier)
-            if required_type and getattr(f, "entity_type", None) != required_type:
-                continue
-            cost = EVOLUTION_COST_BY_TIER.get(tier, 0)
-            if energy < cost:
-                continue
-            return True
-        return False
+        return _evolve_moeglich(state)
 
     if action == "market_buy":
-        persona = (getattr(state, "persona_type", None) or "scientist").lower()
-        allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
-        energy = _energy(state)
-        for b in _market_buyable(state):
-            if allowed is not None:
-                item_type = getattr(b, "item_type", None)
-                if item_type not in allowed:
-                    continue
-            price = getattr(b, "price_energy", None)
-            if price is None:
-                continue
-            try:
-                if float(price) <= energy:
-                    return True
-            except (TypeError, ValueError):
-                continue
-        return False
+        return _market_buy_moeglich(state)
 
     if action == "market_list":
         # v2.1.0 (S297): Server-Wahrheit statt eigener Schwelle — siehe
@@ -313,18 +335,7 @@ def is_valid(state: GameState, action: str) -> bool:
 
     # S206 Marauder-Mission-System Phase 2.
     if action == "start_mission":
-        # Marauder muss in recovery sein + keine aktive Mission.
-        marauder_state = getattr(state, "marauder_state", None) or "recovery"
-        if marauder_state != "recovery":
-            return False
-        my_mission = getattr(state, "my_mission", None)
-        if my_mission is not None:
-            return False
-        # v2.1.0: nur gültig, wenn die Params auch FUELLBAR sind (echte UUIDs) —
-        # ein feldloser Agent in voller Welt hat keinen Missions-Kandidaten,
-        # und ein {}-Versuch wäre ein garantierter 422.
-        persona_v = (getattr(state, "persona_type", None) or "scientist").lower()
-        return bool(resolve_action_params(state, "start_mission", persona_v))
+        return _start_mission_moeglich(state)
     if action == "cancel_mission":
         return getattr(state, "my_mission", None) is not None
 
@@ -366,6 +377,32 @@ _PERSONA_ENERGY_LIST_PRICE: dict[str, int] = {
 }
 
 
+def _markt_referenzpreise(state: GameState, ml: dict[str, Any]) -> dict[str, float]:
+    """Referenzpreise je Item-Typ — bevorzugt vom Server (`reference_prices`,
+    Backend >= v1.64.31: billigstes aktives Fremd-Listing je Typ; das
+    Markt-Briefing traegt nur die 20 billigsten Listings insgesamt und laesst
+    hochpreisige Typen wie mega_bomb unsichtbar). Fallback: das Briefing."""
+    referenz: dict[str, float] = {}
+    server_ref = ml.get("reference_prices")
+    if isinstance(server_ref, dict):
+        for it, preis in server_ref.items():
+            try:
+                referenz[str(it)] = float(preis)
+            except (TypeError, ValueError):
+                continue
+    if not referenz:
+        for b in _market_buyable(state):
+            it = getattr(b, "item_type", None)
+            preis = getattr(b, "price_energy", None)
+            try:
+                preis_f = float(preis)
+            except (TypeError, ValueError):
+                continue
+            if it and (it not in referenz or preis_f < referenz[it]):
+                referenz[it] = preis_f
+    return referenz
+
+
 def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     """Was KANN dieser Agent listen? Eine Quelle für is_valid + resolve (v2.1.0).
 
@@ -402,29 +439,7 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     items = ml.get("sellable_items") or {}
     if not isinstance(items, dict) or not items:
         return None
-    # Referenzpreise je Typ — bevorzugt vom Server (`reference_prices`,
-    # Backend >= v1.64.31: billigstes aktives Fremd-Listing je Typ; das
-    # Markt-Briefing traegt nur die 20 billigsten Listings insgesamt und
-    # laesst hochpreisige Typen wie mega_bomb unsichtbar). Fallback: das
-    # Briefing selbst.
-    referenz: dict[str, float] = {}
-    server_ref = ml.get("reference_prices")
-    if isinstance(server_ref, dict):
-        for it, preis in server_ref.items():
-            try:
-                referenz[str(it)] = float(preis)
-            except (TypeError, ValueError):
-                continue
-    if not referenz:
-        for b in _market_buyable(state):
-            it = getattr(b, "item_type", None)
-            preis = getattr(b, "price_energy", None)
-            try:
-                preis_f = float(preis)
-            except (TypeError, ValueError):
-                continue
-            if it and (it not in referenz or preis_f < referenz[it]):
-                referenz[it] = preis_f
+    referenz = _markt_referenzpreise(state, ml)
     # Wertvollstes referenzierbares Item zuerst — totes Kapital zu Geld.
     kandidaten = [(referenz[t], t) for t, n in items.items() if t in referenz and (n or 0) > 0]
     if not kandidaten:
@@ -527,112 +542,191 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
         return _market_list_plan(state) or {}
 
     if action == "propose_contract":
-        targets = _contract_targets(state)
-        if not targets:
-            return {}
-        target = targets[0]
-        # v2.1.1 (S298): Typ UND Terms je Persona aus der Backend-Wahrheit
-        # (models/contract.py:CONTRACT_TYPES + Free-Tier-Gate agent_game.py:
-        # _FREE_CONTRACT_TYPES = {non_aggression, trade_agreement}).
-        # Vorher erfand der Baum "research_agreement" (existiert im Backend
-        # nicht -> validate_terms "Unknown contract type" -> HTTP 400, bei
-        # Comet-hand 156x in 22 h), und trade_agreement lief ohne den
-        # Pflicht-Term fee_discount_pct (required laut Schema) in dieselbe 400.
-        contract_plan = {
-            "scientist": ("non_aggression", {"duration": 100}),
-            "trader": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
-            "warrior": ("non_aggression", {"duration": 100}),
-            "diplomat": ("non_aggression", {"duration": 100}),
-            "farmer": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
-            "expansionist": ("non_aggression", {"duration": 100}),
-        }
-        contract_type, terms = contract_plan.get(persona, ("non_aggression", {"duration": 100}))
-        return {
-            "to_player_id": str(target.player_id),
-            "contract_type": contract_type,
-            # Backend-Validator (contract_manager.validate_terms) erwartet
-            # API-Term-Key 'duration' (nicht 'duration_ticks' — das ist nur die
-            # ORM-Column, models/contract.py:94). Verifiziert 2026-05-09 nach
-            # Socket-hand 0/99 success-Empirie auf RPi 4 (S178).
-            "terms": terms,
-            "escrow_amount": 0,
-        }
+        return _resolve_propose_contract(state, persona)
 
     # S206 Mission-System.
     if action == "start_mission":
-        # Persona-Affinity-Default — konzept-mission-system §3 + persona-Reform.
-        mission_by_persona = {
-            "warrior": "gather_spores",  # Arsenal-Aufbau
-            "expansionist": "gather_spores",  # Werkzeuge für Cube-Expansion
-            "farmer": "gather_spores",  # Erntung
-            "scientist": "scout_terminal",  # Intel-Sammeln
-            "trader": "deliver_resource",  # Transport-Geschäft
-            "diplomat": "patrol_field",  # Diplomatischer Rundgang
-        }
-        mission_type = mission_by_persona.get(persona, "gather_spores")
-        # v2.1.0 (S297): reward_energy IMMER 0 — das Backend lehnt jede
-        # selbst erstellte Mission mit reward > 0 ab (S278-Selbstbelohnungs-
-        # Tor: „you would be paying yourself out of nothing"). Die 1000 aus
-        # v2.0.x waren ein garantierter 400.
-        # Und: params muessen FUELLBAR sein — das Schema verlangt echte UUIDs,
-        # ein None-field_id/cube_id ist ein garantierter 422. Lieber gar kein
-        # Kandidat als ein toter.
-        if mission_type == "scout_terminal":
-            cubes = _universe_cubes(state)
-            if not cubes:
-                mission_type = "gather_spores"  # Fallback auf den Feld-Weg
-            else:
-                return {
-                    "mission_type": "scout_terminal",
-                    "params": {
-                        "cube_id": str(cubes[0].id),
-                        "query_type": "wealth_estimate",
-                    },
-                    "reward_energy": 0,
-                }
-        fields = _fields(state)
-        if not fields:
-            return {}
-        return {
-            "mission_type": "gather_spores",
-            "params": {
-                "field_id": str(fields[0].id),
-                "max_items": 10,
-                "duration_ticks": 200,
-            },
-            "reward_energy": 0,
-        }
+        return _resolve_start_mission(state, persona)
 
     if action == "cancel_mission":
         return {}
 
     if action == "propose_from_template":
-        targets = _contract_targets(state)
-        if not targets:
-            return {}
-        # Persona-spezifische Template-Wahl (S204 konzept-vertrags-vorlagen).
-        template_by_persona = {
-            "warrior": "T09_ALLIANCE",
-            "diplomat": "T08_NON_AGGRESSION",
-            "trader": "T07_TRADE_AGREEMENT",
-            "farmer": "T06_TRIBUTE",
-            "scientist": "T09_ALLIANCE",
-            "expansionist": "T08_NON_AGGRESSION",
-        }
-        return {
-            "template_id": template_by_persona.get(persona, "T08_NON_AGGRESSION"),
-            "mode": "targeted",
-            "slots": {
-                "partner_id": str(targets[0].player_id),
-                "duration": 100,
-            },
-            "escrow_amount": 0,
-        }
+        return _resolve_propose_from_template(state, persona)
 
     return {}
 
 
+def _resolve_propose_contract(state: GameState, persona: str) -> dict[str, Any]:
+    """Vertragstyp UND Terms je Persona aus der Backend-Wahrheit.
+
+    v2.1.1 (S298): Referenz sind models/contract.py:CONTRACT_TYPES + das
+    Free-Tier-Gate agent_game.py:_FREE_CONTRACT_TYPES = {non_aggression,
+    trade_agreement}. Vorher erfand der Baum "research_agreement" (existiert
+    im Backend nicht -> validate_terms "Unknown contract type" -> HTTP 400,
+    bei Comet-hand 156x in 22 h), und trade_agreement lief ohne den
+    Pflicht-Term fee_discount_pct (required laut Schema) in dieselbe 400.
+    """
+    targets = _contract_targets(state)
+    if not targets:
+        return {}
+    target = targets[0]
+    contract_plan = {
+        "scientist": ("non_aggression", {"duration": 100}),
+        "trader": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
+        "warrior": ("non_aggression", {"duration": 100}),
+        "diplomat": ("non_aggression", {"duration": 100}),
+        "farmer": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
+        "expansionist": ("non_aggression", {"duration": 100}),
+    }
+    contract_type, terms = contract_plan.get(persona, ("non_aggression", {"duration": 100}))
+    return {
+        "to_player_id": str(target.player_id),
+        "contract_type": contract_type,
+        # Backend-Validator (contract_manager.validate_terms) erwartet
+        # API-Term-Key 'duration' (nicht 'duration_ticks' — das ist nur die
+        # ORM-Column, models/contract.py:94). Verifiziert 2026-05-09 nach
+        # Socket-hand 0/99 success-Empirie auf RPi 4 (S178).
+        "terms": terms,
+        "escrow_amount": 0,
+    }
+
+
+def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
+    """Persona-Affinity-Default — konzept-mission-system §3 + persona-Reform.
+
+    v2.1.0 (S297): reward_energy IMMER 0 — das Backend lehnt jede selbst
+    erstellte Mission mit reward > 0 ab (S278-Selbstbelohnungs-Tor: „you
+    would be paying yourself out of nothing"). Die 1000 aus v2.0.x waren ein
+    garantierter 400. Und: params muessen FUELLBAR sein — das Schema verlangt
+    echte UUIDs, ein None-field_id/cube_id ist ein garantierter 422. Lieber
+    gar kein Kandidat als ein toter.
+    """
+    mission_by_persona = {
+        "warrior": "gather_spores",  # Arsenal-Aufbau
+        "expansionist": "gather_spores",  # Werkzeuge für Cube-Expansion
+        "farmer": "gather_spores",  # Erntung
+        "scientist": "scout_terminal",  # Intel-Sammeln
+        "trader": "deliver_resource",  # Transport-Geschäft
+        "diplomat": "patrol_field",  # Diplomatischer Rundgang
+    }
+    mission_type = mission_by_persona.get(persona, "gather_spores")
+    if mission_type == "scout_terminal":
+        cubes = _universe_cubes(state)
+        if not cubes:
+            mission_type = "gather_spores"  # Fallback auf den Feld-Weg
+        else:
+            return {
+                "mission_type": "scout_terminal",
+                "params": {
+                    "cube_id": str(cubes[0].id),
+                    "query_type": "wealth_estimate",
+                },
+                "reward_energy": 0,
+            }
+    fields = _fields(state)
+    if not fields:
+        return {}
+    return {
+        "mission_type": "gather_spores",
+        "params": {
+            "field_id": str(fields[0].id),
+            "max_items": 10,
+            "duration_ticks": 200,
+        },
+        "reward_energy": 0,
+    }
+
+
+def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, Any]:
+    """Persona-spezifische Template-Wahl (S204 konzept-vertrags-vorlagen)."""
+    targets = _contract_targets(state)
+    if not targets:
+        return {}
+    template_by_persona = {
+        "warrior": "T09_ALLIANCE",
+        "diplomat": "T08_NON_AGGRESSION",
+        "trader": "T07_TRADE_AGREEMENT",
+        "farmer": "T06_TRIBUTE",
+        "scientist": "T09_ALLIANCE",
+        "expansionist": "T08_NON_AGGRESSION",
+    }
+    return {
+        "template_id": template_by_persona.get(persona, "T08_NON_AGGRESSION"),
+        "mode": "targeted",
+        "slots": {
+            "partner_id": str(targets[0].player_id),
+            "duration": 100,
+        },
+        "escrow_amount": 0,
+    }
+
+
 # --- Predict-Delta-Funktionen (was ändert die Action am State?) --------------
+
+
+def _delta_create_field(state: GameState, n_fields: int) -> dict[str, float]:
+    """Delta eines Feld-Kaufs: Kosten, +1 Feld, Verwässerung der avg_cells."""
+    next_cost = _next_field_cost(state)
+    return {
+        "energy": -next_cost,
+        "field_count": +1,
+        "avg_cells": -(
+            (
+                sum(getattr(f, "active_cell_count", 0) or 0 for f in _fields(state))
+                / max(n_fields, 1)
+            )
+            - (
+                sum(getattr(f, "active_cell_count", 0) or 0 for f in _fields(state))
+                / max(n_fields + 1, 1)
+            )
+        ),
+    }
+
+
+def _delta_place_cells(params: dict[str, Any], n_fields: int) -> dict[str, float]:
+    """Delta einer Saat: Preset-Kosten + geschätzte Zell-Zunahme."""
+    preset = params.get("preset", "block")
+    cost = _PRESET_COST.get(preset, 5)
+    # blinker fügt ~3 cells, glider ~5, etc. Schätzung:
+    cells_added = {"block": 4, "blinker": 3, "toad": 6, "glider": 5, "r_pentomino": 5}.get(
+        preset, 4
+    )
+    avg_cells_delta = cells_added / max(n_fields, 1) if n_fields else 0
+    return {
+        "energy": -cost,
+        "avg_cells": +avg_cells_delta,
+        "patterns_established": +1 if preset != "block" else 0,
+    }
+
+
+def _delta_market_buy(state: GameState) -> dict[str, float]:
+    """Delta des billigsten persona-erlaubten Kaufs."""
+    b = _cheapest_buyable(state, (getattr(state, "persona_type", None) or "scientist").lower())
+    if b is None:
+        return {}
+    price = getattr(b, "price_energy", 0) or 0
+    item_type = getattr(b, "item_type", None)
+    return {
+        "energy": -float(price),
+        "inventory_growth": +1,
+        "is_cube_or_field": 1.0 if item_type in ("cube", "field") else 0.0,
+    }
+
+
+def _delta_start_mission(params: dict[str, Any]) -> dict[str, float]:
+    """Mission blockt den Marauder für duration_ticks, kostet upfront
+    reward_energy als Reserve. Goal-Effekt je mission_type."""
+    mission_type = params.get("mission_type", "")
+    reward = float(params.get("reward_energy", 0) or 0)
+    delta: dict[str, float] = {"energy": -reward, "active_missions": +1}
+    if mission_type == "gather_spores":
+        delta["inventory_growth"] = float(params.get("params", {}).get("max_items") or 10)
+    elif mission_type == "capture_field":
+        delta["field_count"] = +1
+    elif mission_type == "heal_holes_field":
+        delta["field_health"] = +1
+    return delta
 
 
 def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dict[str, float]:
@@ -644,35 +738,10 @@ def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dic
         return {}
 
     if action == "create_field":
-        next_cost = _next_field_cost(state)
-        return {
-            "energy": -next_cost,
-            "field_count": +1,
-            "avg_cells": -(
-                (
-                    sum(getattr(f, "active_cell_count", 0) or 0 for f in _fields(state))
-                    / max(n_fields, 1)
-                )
-                - (
-                    sum(getattr(f, "active_cell_count", 0) or 0 for f in _fields(state))
-                    / max(n_fields + 1, 1)
-                )
-            ),
-        }
+        return _delta_create_field(state, n_fields)
 
     if action == "place_cells":
-        preset = params.get("preset", "block")
-        cost = _PRESET_COST.get(preset, 5)
-        # blinker fügt ~3 cells, glider ~5, etc. Schätzung:
-        cells_added = {"block": 4, "blinker": 3, "toad": 6, "glider": 5, "r_pentomino": 5}.get(
-            preset, 4
-        )
-        avg_cells_delta = cells_added / max(n_fields, 1) if n_fields else 0
-        return {
-            "energy": -cost,
-            "avg_cells": +avg_cells_delta,
-            "patterns_established": +1 if preset != "block" else 0,
-        }
+        return _delta_place_cells(params, n_fields)
 
     if action == "evolve":
         # Tier-Aufstieg eines Fields
@@ -684,16 +753,7 @@ def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dic
         return {"energy": -cost, "evolved_fields": +1}
 
     if action == "market_buy":
-        b = _cheapest_buyable(state, (getattr(state, "persona_type", None) or "scientist").lower())
-        if b is None:
-            return {}
-        price = getattr(b, "price_energy", 0) or 0
-        item_type = getattr(b, "item_type", None)
-        return {
-            "energy": -float(price),
-            "inventory_growth": +1,
-            "is_cube_or_field": 1.0 if item_type in ("cube", "field") else 0.0,
-        }
+        return _delta_market_buy(state)
 
     if action == "market_list":
         # Annahme: list-fee marginal, Verkauf ist ungewiss aber positiv
@@ -705,19 +765,7 @@ def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dic
 
     # S206 Marauder-Mission-System Phase 2.
     if action == "start_mission":
-        # Mission blockt marauder für duration_ticks, kostet upfront reward_energy
-        # als Reserve. Goal-Effekt je mission_type: gather_spores → inventory_growth,
-        # capture_field → field_count, heal_holes_field → field_health, etc.
-        mission_type = params.get("mission_type", "")
-        reward = float(params.get("reward_energy", 0) or 0)
-        delta: dict[str, float] = {"energy": -reward, "active_missions": +1}
-        if mission_type == "gather_spores":
-            delta["inventory_growth"] = float(params.get("params", {}).get("max_items") or 10)
-        elif mission_type == "capture_field":
-            delta["field_count"] = +1
-        elif mission_type == "heal_holes_field":
-            delta["field_health"] = +1
-        return delta
+        return _delta_start_mission(params)
 
     if action == "cancel_mission":
         return {"active_missions": -1}
@@ -874,6 +922,33 @@ def _decide_pending_contract(state: GameState, persona: str) -> tuple[str, dict[
     return None
 
 
+def _score_pool(
+    state: GameState,
+    persona: str,
+    action_pool: tuple[str, ...],
+    goal_metric: dict[str, Any],
+    bias_map: dict[str, float],
+    compass_modifier: dict[str, float],
+    blocked: frozenset[str],
+) -> dict[str, tuple[float, dict[str, Any]]]:
+    """Validity + Score über den Aktions-Pool (Basis + Persona- + Compass-Bias)."""
+    scores: dict[str, tuple[float, dict[str, Any]]] = {}
+    for action in action_pool:
+        if action not in VALID_ACTIONS:
+            continue
+        if action in blocked:
+            continue  # v2.1.0 Backoff — der Loop hat sie gesperrt
+        if not is_valid(state, action):
+            continue
+        params = resolve_action_params(state, action, persona)
+        base = score_action(state, action, params, goal_metric)
+        persona_b = bias_map.get(action, 0.0)
+        compass_b = compass_modifier.get(action, 0.0)
+        final = base + persona_b + compass_b
+        scores[action] = (final, params)
+    return scores
+
+
 class TreeDecider:
     """GOBT-Pattern decider: Subsistenz-Check + Persona-Charakter-Cycle.
 
@@ -883,7 +958,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.1.0"
+    version: str = "2.1.1"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
@@ -922,21 +997,9 @@ class TreeDecider:
         # Compass-Modifier (additiv)
         compass_modifier = COMPASS_BIAS.get(compass or "autonomous", {})
 
-        # Validity + Score
-        scores: dict[str, tuple[float, dict[str, Any]]] = {}
-        for action in action_pool:
-            if action not in VALID_ACTIONS:
-                continue
-            if action in blocked:
-                continue  # v2.1.0 Backoff — der Loop hat sie gesperrt
-            if not is_valid(state, action):
-                continue
-            params = resolve_action_params(state, action, persona)
-            base = score_action(state, action, params, goal_metric)
-            persona_b = bias_map.get(action, 0.0)
-            compass_b = compass_modifier.get(action, 0.0)
-            final = base + persona_b + compass_b
-            scores[action] = (final, params)
+        scores = _score_pool(
+            state, persona, action_pool, goal_metric, bias_map, compass_modifier, blocked
+        )
 
         if not scores:
             return ("wait", {})
