@@ -345,3 +345,29 @@ def test_propose_contract_nur_backend_typen_mit_pflicht_terms() -> None:
         missing = free_types_required_terms[ctype] - set(params["terms"])
         assert not missing, f"{persona}/{ctype}: fehlende Pflicht-Terms {missing}"
         assert params["to_player_id"] == "55555555-5555-5555-5555-555555555555"
+
+
+def test_propose_from_template_params_genestet_und_free_tier() -> None:
+    """template_id/mode/slots muessen im params-Sub-Dict reisen (das SDK legt
+    act()-kwargs flach in den Body, ActionRequest kennt sie nicht -> 422),
+    und nur Free-Tier-Templates T07/T08 (T09/T06 rendern zu alliance/tribute,
+    die 402-Klasse des direkten propose_contract-Wegs). S298 am Live-Fall
+    Comet-hand: 3x 422 direkt nach dem v2.1.1-Deploy."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    required_slots = {
+        "T08_NON_AGGRESSION": {"partner_id", "duration"},
+        "T07_TRADE_AGREEMENT": {"partner_id", "fee_discount_pct", "duration"},
+    }
+    target = SimpleNamespace(player_id="66666666-6666-6666-6666-666666666666")
+    for persona in ["scientist", "trader", "warrior", "diplomat", "farmer", "expansionist"]:
+        state = _make_state(persona=persona)
+        state.world_briefing.contract_targets = [target]
+        out = resolve_action_params(state, "propose_from_template", persona)
+        assert set(out) == {"params", "escrow_amount"}, f"{persona}: {set(out)}"
+        inner = out["params"]
+        tid = inner["template_id"]
+        assert tid in required_slots, f"{persona}: {tid} ist kein Free-Tier-Template"
+        missing = required_slots[tid] - set(inner["slots"])
+        assert not missing, f"{persona}/{tid}: fehlende Slots {missing}"
+        assert inner["mode"] == "targeted"

@@ -1,7 +1,13 @@
-"""TreeDecider v2.1.1 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.1.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.1.2 changes (S298, gleicher Tag — der Backoff legte den naechsten frei):
+  - propose_from_template: template_id/mode/slots reisen im ``params``-
+    Sub-Dict (ActionRequest kennt sie nicht flach -> 422 bei jedem Versuch)
+    und nur Free-Tier-konforme Templates T07/T08 (T09/T06 rendern zu
+    alliance/tribute = 402-Klasse des direkten Wegs).
 
 v2.1.1 changes (S298, vom v2.1.0-Backoff freigelegt):
   - propose_contract: Vertragstyp UND Terms je Persona aus der
@@ -639,24 +645,41 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
 
 
 def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, Any]:
-    """Persona-spezifische Template-Wahl (S204 konzept-vertrags-vorlagen)."""
+    """Persona-spezifische Template-Wahl (S204 konzept-vertrags-vorlagen).
+
+    v2.1.2 (S298): zwei Korrekturen am Live-Fall Comet-hand.
+    (1) template_id/mode/slots MUESSEN im ``params``-Sub-Dict reisen:
+    das SDK legt act()-kwargs flach in den Body, ActionRequest kennt diese
+    Felder aber nicht (Pydantic verwirft sie) — der Handler las None und
+    antwortete 422 "params.template_id required", bei jedem Versuch.
+    (2) Nur Free-Tier-konforme Templates (T07/T08): T09_ALLIANCE/T06_TRIBUTE
+    rendern zu alliance/tribute, die das Free-Tier-Gate beim direkten
+    propose_contract mit 402 ablehnt — der Template-Weg soll dieselbe Regel
+    leben, nicht sie umgehen.
+    """
     targets = _contract_targets(state)
     if not targets:
         return {}
+    t08 = ("T08_NON_AGGRESSION", {})
+    t07 = ("T07_TRADE_AGREEMENT", {"fee_discount_pct": 10})
     template_by_persona = {
-        "warrior": "T09_ALLIANCE",
-        "diplomat": "T08_NON_AGGRESSION",
-        "trader": "T07_TRADE_AGREEMENT",
-        "farmer": "T06_TRIBUTE",
-        "scientist": "T09_ALLIANCE",
-        "expansionist": "T08_NON_AGGRESSION",
+        "warrior": t08,
+        "diplomat": t08,
+        "trader": t07,
+        "farmer": t07,
+        "scientist": t08,
+        "expansionist": t08,
     }
+    template_id, extra_slots = template_by_persona.get(persona, t08)
     return {
-        "template_id": template_by_persona.get(persona, "T08_NON_AGGRESSION"),
-        "mode": "targeted",
-        "slots": {
-            "partner_id": str(targets[0].player_id),
-            "duration": 100,
+        "params": {
+            "template_id": template_id,
+            "mode": "targeted",
+            "slots": {
+                "partner_id": str(targets[0].player_id),
+                "duration": 100,
+                **extra_slots,
+            },
         },
         "escrow_amount": 0,
     }
@@ -958,7 +981,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.1.1"
+    version: str = "2.1.2"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
