@@ -1,7 +1,15 @@
-"""TreeDecider v2.1.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.1.3 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.1.3 changes (S298, an der Live-Kadenz gemessen):
+  - Vertrags-``duration`` 100 -> 1000 Ticks. 100 (~2,5 h) machte Pakte zu
+    Drehtuer-Vertraegen: der Server schliesst Verpaktete aus den
+    contract_targets aus, nach Expiry sind sie wieder Kandidat — Comet-hand
+    schloss 34 Pakte in 75 min und haette das endlos rolliert. 1000 ist die
+    Beziehungs-Zeitskala der Hauptwelt (CAPTURE_COOLDOWN_TICKS), keine
+    gesetzte Zahl; daempft die Kadenz ~Faktor 7 und macht den Pakt echt.
 
 v2.1.2 changes (S298, gleicher Tag — der Backoff legte den naechsten frei):
   - propose_from_template: template_id/mode/slots reisen im ``params``-
@@ -578,14 +586,14 @@ def _resolve_propose_contract(state: GameState, persona: str) -> dict[str, Any]:
         return {}
     target = targets[0]
     contract_plan = {
-        "scientist": ("non_aggression", {"duration": 100}),
-        "trader": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
-        "warrior": ("non_aggression", {"duration": 100}),
-        "diplomat": ("non_aggression", {"duration": 100}),
-        "farmer": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
-        "expansionist": ("non_aggression", {"duration": 100}),
+        "scientist": ("non_aggression", {"duration": 1000}),
+        "trader": ("trade_agreement", {"fee_discount_pct": 10, "duration": 1000}),
+        "warrior": ("non_aggression", {"duration": 1000}),
+        "diplomat": ("non_aggression", {"duration": 1000}),
+        "farmer": ("trade_agreement", {"fee_discount_pct": 10, "duration": 1000}),
+        "expansionist": ("non_aggression", {"duration": 1000}),
     }
-    contract_type, terms = contract_plan.get(persona, ("non_aggression", {"duration": 100}))
+    contract_type, terms = contract_plan.get(persona, ("non_aggression", {"duration": 1000}))
     return {
         "to_player_id": str(target.player_id),
         "contract_type": contract_type,
@@ -677,7 +685,7 @@ def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, 
             "mode": "targeted",
             "slots": {
                 "partner_id": str(targets[0].player_id),
-                "duration": 100,
+                "duration": 1000,
                 **extra_slots,
             },
         },
@@ -981,7 +989,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.1.2"
+    version: str = "2.1.3"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
