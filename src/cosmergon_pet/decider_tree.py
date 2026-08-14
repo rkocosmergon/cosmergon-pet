@@ -1,10 +1,15 @@
-"""TreeDecider v2.1.0 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.1.1 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
-⚠ S297: die Research-Quelle steht auf v2.0.0, dieser Vendor war schon vorher
-(v2.0.2) VORAUS — „Source-of-truth lives there" ist derzeit nicht wahr.
-Rueck-Sync ist ein offener TODO-Punkt im cosmergon-Repo.
+
+v2.1.1 changes (S298, vom v2.1.0-Backoff freigelegt):
+  - propose_contract: Vertragstyp UND Terms je Persona aus der
+    Backend-Wahrheit. Vorher erfand der Baum "research_agreement"
+    (existiert im Backend nicht) und sandte trade_agreement ohne den
+    Pflicht-Term ``fee_discount_pct`` — beide Formen liefen bei jedem
+    Versuch in HTTP 400 (Comet-hand: 156x in 22 h, nur vom Backoff
+    gedrosselt).
 
 v2.1.0 changes (S297, am Live-Fall Comet-hand):
   - market_list liest die SERVER-Wahrheit (``available_actions.market_list``:
@@ -526,22 +531,30 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
         if not targets:
             return {}
         target = targets[0]
-        contract_types = {
-            "scientist": "research_agreement",
-            "trader": "trade_agreement",
-            "warrior": "non_aggression",
-            "diplomat": "non_aggression",
-            "farmer": "trade_agreement",
-            "expansionist": "non_aggression",
+        # v2.1.1 (S298): Typ UND Terms je Persona aus der Backend-Wahrheit
+        # (models/contract.py:CONTRACT_TYPES + Free-Tier-Gate agent_game.py:
+        # _FREE_CONTRACT_TYPES = {non_aggression, trade_agreement}).
+        # Vorher erfand der Baum "research_agreement" (existiert im Backend
+        # nicht -> validate_terms "Unknown contract type" -> HTTP 400, bei
+        # Comet-hand 156x in 22 h), und trade_agreement lief ohne den
+        # Pflicht-Term fee_discount_pct (required laut Schema) in dieselbe 400.
+        contract_plan = {
+            "scientist": ("non_aggression", {"duration": 100}),
+            "trader": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
+            "warrior": ("non_aggression", {"duration": 100}),
+            "diplomat": ("non_aggression", {"duration": 100}),
+            "farmer": ("trade_agreement", {"fee_discount_pct": 10, "duration": 100}),
+            "expansionist": ("non_aggression", {"duration": 100}),
         }
+        contract_type, terms = contract_plan.get(persona, ("non_aggression", {"duration": 100}))
         return {
             "to_player_id": str(target.player_id),
-            "contract_type": contract_types.get(persona, "non_aggression"),
+            "contract_type": contract_type,
             # Backend-Validator (contract_manager.validate_terms) erwartet
             # API-Term-Key 'duration' (nicht 'duration_ticks' — das ist nur die
             # ORM-Column, models/contract.py:94). Verifiziert 2026-05-09 nach
             # Socket-hand 0/99 success-Empirie auf RPi 4 (S178).
-            "terms": {"duration": 100},
+            "terms": terms,
             "escrow_amount": 0,
         }
 

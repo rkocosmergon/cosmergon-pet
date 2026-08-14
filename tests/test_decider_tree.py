@@ -305,3 +305,43 @@ def test_market_list_item_mit_server_referenzpreis() -> None:
         "item_data": {"count": 1},
         "price_energy": 95_000,
     }
+
+
+def test_propose_contract_nur_backend_typen_mit_pflicht_terms() -> None:
+    """Jede Persona sendet einen Vertragstyp, den das Backend kennt, mit
+    vollstaendigen Pflicht-Terms.
+
+    S298: der Baum erfand "research_agreement" (existiert im Backend nicht,
+    validate_terms -> "Unknown contract type" -> HTTP 400) und sandte
+    trade_agreement ohne den Pflicht-Term fee_discount_pct (dieselbe 400).
+    Referenz abgeschrieben aus dem Backend (models/contract.py:CONTRACT_TYPES,
+    Free-Tier-Teilmenge agent_game.py:_FREE_CONTRACT_TYPES) — der Pet ist ein
+    free-Agent und darf nur diese Typen proponieren.
+    """
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    free_types_required_terms = {
+        "non_aggression": {"duration"},
+        "trade_agreement": {"fee_discount_pct", "duration"},
+    }
+    target = SimpleNamespace(player_id="55555555-5555-5555-5555-555555555555")
+    personas = [
+        "scientist",
+        "trader",
+        "warrior",
+        "diplomat",
+        "farmer",
+        "expansionist",
+        "some-future-persona",
+    ]
+    for persona in personas:
+        state = _make_state(persona=persona)
+        state.world_briefing.contract_targets = [target]
+        params = resolve_action_params(state, "propose_contract", persona)
+        ctype = params["contract_type"]
+        assert ctype in free_types_required_terms, (
+            f"{persona}: '{ctype}' ist kein free-tier-proponierbarer Backend-Typ"
+        )
+        missing = free_types_required_terms[ctype] - set(params["terms"])
+        assert not missing, f"{persona}/{ctype}: fehlende Pflicht-Terms {missing}"
+        assert params["to_player_id"] == "55555555-5555-5555-5555-555555555555"
