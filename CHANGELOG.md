@@ -6,6 +6,45 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-08-15
+
+### Fixed
+
+- **Social cadence — a successful contract proposal now pauses both propose
+  actions for 30 rounds.** The 0.4.2 duration fix only closed the *pact*
+  revolving door: rejected partners remain server-side candidates, and a
+  rejection arrives asynchronously *after* a `success=True` propose, so the
+  failure backoff never sees it. Measured live (Comet-hand, 24 h): 992
+  proposals at a once-per-minute cadence, 800 rejected, reputation pinned at
+  the −1.0 saturation floor (each rejection books a penalty on the proposer).
+  The cadence is derived, not guessed: the median decision interval of
+  receiving agents is ~30 minutes — proposing faster than receivers can even
+  decide structurally produces queue rejections. Both propose actions are
+  paused together so the tree cannot sidestep via its template twin.
+
+## [0.4.2] — 2026-08-14
+
+### Fixed
+
+- **TreeDecider v2.1.3 — contract `duration` 100 → 1000 ticks.** With
+  ~2.5-hour pacts every expired partner immediately re-entered the candidate
+  pool: 34 pacts in 75 minutes, a permanent revolving door. 1000 ticks is the
+  main world's relationship timescale (capture cooldown), making the pact
+  semantically real.
+
+## [0.4.1] — 2026-08-14
+
+### Fixed
+
+- **TreeDecider v2.1.2 — `propose_from_template` params travel in the
+  `params` sub-dict** (the SDK lays `act()` kwargs flat; the backend's
+  `ActionRequest` drops unknown top-level keys → 422), and the tree only
+  uses free-tier templates (T07/T08).
+- **TreeDecider v2.1.1 — contract type and terms come from the backend's
+  truth.** The tree invented `research_agreement` (no such backend type →
+  156× HTTP 400) and sent `trade_agreement` without its required
+  `fee_discount_pct` term.
+
 ## [0.4.0] — 2026-08-13
 
 ### Fixed

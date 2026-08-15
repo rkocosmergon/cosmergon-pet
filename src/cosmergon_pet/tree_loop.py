@@ -45,9 +45,26 @@ DEFAULT_INTERVAL_S = 60.0
 BACKOFF_AFTER_FAILURES = 3
 BACKOFF_ROUNDS = 30
 
+# Pet 0.4.3 (S299): soziale Kadenz (Loop-Mechanik — Tree bleibt v2.1.3).
+# Der v2.1.3-duration-Fix hielt nur
+# die PAKT-Drehtuer — abgelehnte Partner bleiben Server-Kandidaten, und eine
+# Ablehnung kommt asynchron NACH einem success=True (der Backoff sieht also
+# nie einen Fehlschlag). Gemessen 15.08.: 992 Proposes/24 h im Minutenraster,
+# davon 800 rejected, Comet-hand-Reputation am tanh-Anschlag -1,0 (jede
+# Ablehnung bucht -0,015 auf den Vorschlagenden, contract_manager S285).
+# Kadenz-Herleitung statt Setzung: der Median-Entscheidungsabstand der
+# Empfaenger-Decider liegt bei ~32,5 min (S281/S296) — wer oefter antraegt,
+# als Empfaenger ueberhaupt ENTSCHEIDEN, erzeugt strukturell
+# Warteschlangen-Ablehnungen. 30 Runden x 60-s-Takt ~= diese Bezugsgroesse.
+# BEIDE Propose-Aktionen sperren, sonst weicht der Baum auf den Zwilling aus
+# (Gate-im-Default-Zweig-Klasse).
+SOZIALE_AKTIONEN = frozenset({"propose_contract", "propose_from_template"})
+SOZIAL_KADENZ_ROUNDS = 30
+
 
 class _Backoff:
-    """Sperrt Aktionen nach wiederholten Fehlschlaegen fuer einige Runden."""
+    """Sperrt Aktionen nach wiederholten Fehlschlaegen fuer einige Runden —
+    und drosselt soziale Aktionen nach ERFOLG (Kadenz, siehe Konstanten)."""
 
     def __init__(self) -> None:
         self._fails: dict[str, int] = {}
@@ -64,6 +81,15 @@ class _Backoff:
         if success:
             self._fails.pop(action, None)
             self._blocked_until_round.pop(action, None)
+            if action in SOZIALE_AKTIONEN:
+                bis = self._round + SOZIAL_KADENZ_ROUNDS
+                for a in SOZIALE_AKTIONEN:
+                    self._blocked_until_round[a] = max(self._blocked_until_round.get(a, 0), bis)
+                logger.info(
+                    "sozial-kadenz: %s erfolgreich — Propose-Aktionen fuer %d Runden pausiert",
+                    action,
+                    SOZIAL_KADENZ_ROUNDS,
+                )
             return
         n = self._fails.get(action, 0) + 1
         self._fails[action] = n

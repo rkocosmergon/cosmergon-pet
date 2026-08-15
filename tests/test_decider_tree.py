@@ -290,6 +290,67 @@ def test_backoff_sperrt_nach_drei_fehlschlaegen_und_laeuft_ab() -> None:
     assert "market_list" not in b.blocked()
 
 
+# Pet 0.4.3 (S299) — soziale Kadenz: ein ERFOLGREICHER Propose sperrt
+# beide Propose-Aktionen. Anlass: 992 Proposes/24 h im Minutenraster, 800
+# rejected, Reputation am Anschlag — die Ablehnung kommt asynchron nach
+# success=True, der Fehlschlag-Backoff sieht sie nie.
+
+
+def test_sozial_kadenz_erfolgreicher_propose_sperrt_beide_propose_aktionen() -> None:
+    """Rot gegen Alt-Code: dort loeschte ein Erfolg die Sperre nur."""
+    from cosmergon_pet.tree_loop import SOZIAL_KADENZ_ROUNDS, _Backoff
+
+    b = _Backoff()
+    b.naechste_runde()
+    b.melde("propose_contract", success=True)
+    # BEIDE Zwillinge gesperrt — sonst weicht der Baum auf den Template-Weg aus.
+    assert "propose_contract" in b.blocked()
+    assert "propose_from_template" in b.blocked()
+    # Kadenz laeuft ab, danach ist der naechste Antrag wieder erlaubt.
+    for _ in range(SOZIAL_KADENZ_ROUNDS):
+        b.naechste_runde()
+    assert "propose_contract" not in b.blocked()
+    assert "propose_from_template" not in b.blocked()
+
+
+def test_sozial_kadenz_nicht_soziale_erfolge_sperren_nichts() -> None:
+    """Ueberkorrektur-Waechter: market_list/place_cells bleiben kadenzfrei."""
+    from cosmergon_pet.tree_loop import _Backoff
+
+    b = _Backoff()
+    b.naechste_runde()
+    b.melde("market_list", success=True)
+    b.melde("place_cells", success=True)
+    assert b.blocked() == frozenset()
+
+
+def test_sozial_kadenz_ueberschreibt_keinen_laengeren_fehlschlag_backoff() -> None:
+    """max()-Semantik: eine bestehende laengere Sperre wird nicht verkuerzt."""
+    from cosmergon_pet.tree_loop import (
+        BACKOFF_ROUNDS,
+        SOZIAL_KADENZ_ROUNDS,
+        _Backoff,
+    )
+
+    b = _Backoff()
+    # propose_from_template steht nach 3 Fehlschlaegen im Fehlschlag-Backoff …
+    for _ in range(3):
+        b.naechste_runde()
+        b.melde("propose_from_template", success=False)
+    assert "propose_from_template" in b.blocked()
+    # … ein ERFOLG des Zwillings setzt die Kadenz, verkuerzt die Sperre aber
+    # nicht unter ihr bestehendes Ende (beide Enden liegen hier gleichauf:
+    # Runde 3 + 30 — der Test dokumentiert die max()-Regel fuer den Fall,
+    # dass die Konstanten je auseinanderlaufen).
+    b.melde("propose_contract", success=True)
+    ende = max(BACKOFF_ROUNDS, SOZIAL_KADENZ_ROUNDS)
+    for _ in range(ende - 1):
+        b.naechste_runde()
+    assert "propose_from_template" in b.blocked()
+    b.naechste_runde()
+    assert "propose_from_template" not in b.blocked()
+
+
 def test_market_list_item_mit_server_referenzpreis() -> None:
     """Backend >= v1.64.31 liefert reference_prices — die gewinnen gegen das
     Briefing (das nur die 20 billigsten Listings traegt und mega_bomb nie)."""
