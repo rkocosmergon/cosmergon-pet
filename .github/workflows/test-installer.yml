@@ -39,6 +39,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Vorab und in einer Sekunde: liegt die geforderte SDK-Version ueberhaupt
+      # auf PyPI? Ohne diesen Schritt faellt derselbe Fehler erst nach 3,5
+      # Minuten Image-Bau, versteckt in einer pip-Meldung (22.08.2026 erlebt).
+      - name: SDK-Anforderung gegen PyPI pruefen
+        run: bash scripts/check-sdk-verfuegbar.sh
+
       - name: Run installer + tests inside Pi OS Lite aarch64 chroot
         uses: pguyot/arm-runner-action@v2
         with:
