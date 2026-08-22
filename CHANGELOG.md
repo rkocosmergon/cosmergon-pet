@@ -11,19 +11,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **Screen 1 now shows the energy balance over time instead of a text
-  summary.** A filled area chart fills the panel, the agent's name sits at the
-  bottom, the current balance top right. The window alternates every six
-  seconds between **24 hours** and **7 days** (founder request 2026-08-22).
+  summary.** A line curve with hatched area underneath fills the panel, the
+  agent's name sits at the bottom, the current balance top right. High and low
+  of the visible range are marked with a triangle and their value. The window
+  cycles every ten seconds: **60 minutes → 24 hours → 7 days** (founder
+  request 2026-08-22).
+
+  Line with vertical hatching rather than a solid fill: at one bit the two
+  elements can only be told apart by DIRECTION, not brightness. The curve is a
+  continuous horizontal run, the hatching a series of vertical strokes — so the
+  hatching is drawn first and the line on top, otherwise every stroke would
+  break the curve open. The curve connects column to column instead of setting
+  points; on steep sections it would otherwise fall apart into dots.
+
+  The high/low markers sit on a filled black patch so they stay readable over
+  the hatching, and they sit on the LEFT: the curve ends on the right at the
+  current value, which is the most important point on the screen.
 
   The curve is scaled to its own value range, not to zero: an account moving
   between 56.1k and 56.4k would otherwise be a flat line, and the movement is
-  what the screen is for — the absolute figure is printed next to it. When many
-  points are squeezed into 128 columns, each column keeps the **peak** value,
-  so a spike cannot be smoothed away.
+  what the screen is for. When many points are squeezed into 128 columns, each
+  column keeps the **peak** value, so a spike cannot be smoothed away.
 
-  The area is filled rather than drawn as a line because a 1-pixel line on a
-  128×64 monochrome panel breaks into dots on steep sections and is hard to
-  read from a distance. Same rule as the face: at one bit, shape carries.
+  The triangles are drawn as polygons, not typed as characters: the Pi's
+  default bitmap font has no U+25B2/U+25BC and renders a hex-code box instead
+  (checked on the device).
 
 - Requires `cosmergon-agent >= 0.18.0` for `get_balance_history()`.
 

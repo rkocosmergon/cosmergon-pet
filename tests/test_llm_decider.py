@@ -760,9 +760,7 @@ def test_one_decision_without_state_does_not_ask_the_model() -> None:
     callback_calls: list[tuple] = []
 
     asyncio.run(
-        mod._one_decision(
-            agent, provider, lambda a, p, e, s: callback_calls.append((a, s))
-        )
+        mod._one_decision(agent, provider, lambda a, p, e, s: callback_calls.append((a, s)))
     )
 
     provider.decide.assert_not_awaited()

@@ -150,8 +150,12 @@ EYE_MOODS: dict[str, tuple[str, float, bool]] = {
 
 # Zeitfenster des Verlaufs-Schirms, im Wechsel gezeigt. Die Namen sind die des
 # Endpunkts `/agents/{id}/balance-history`; die Beschriftung steht daneben.
-HISTORY_WINDOWS: tuple[tuple[str, str], ...] = (("24h", "24 STD"), ("7d", "7 TAGE"))
-HISTORY_SWITCH_SECONDS = 6.0  # wie lange ein Fenster stehen bleibt
+HISTORY_WINDOWS: tuple[tuple[str, str], ...] = (
+    ("1h", "60 MIN"),
+    ("24h", "24 STD"),
+    ("7d", "7 TAGE"),
+)
+HISTORY_SWITCH_SECONDS = 10.0  # wie lange ein Fenster stehen bleibt
 HISTORY_POLL_SECONDS = 300  # der Verlauf aendert sich langsam — alle 5 min genuegt
 
 COMPASS_PRESETS = ("attack", "defend", "grow", "trade", "explore")
@@ -817,16 +821,21 @@ class OledDisplay:
         """
         from luma.core.render import canvas
 
-        from .sparkline import flaeche_zeichnen, kurz
+        from .sparkline import kurve_zeichnen, kurz, marke_zeichnen
 
         with canvas(self._device) as draw:
             draw.text((0, 0), label, font=self._font, fill="white")
             stand = kurz(konto)
             draw.text((DISPLAY_WIDTH_PX - 6 * len(stand), 0), stand, font=self._font, fill="white")
             if len(werte) >= 2:
-                # 2 px Luft unter der Kopfzeile: ohne sie stösst die Fläche im
+                # 2 px Luft unter der Kopfzeile: ohne sie stösst die Kurve im
                 # Hochpunkt an die Schrift und sieht abgeschnitten aus.
-                flaeche_zeichnen(draw, werte, 0, 12, DISPLAY_WIDTH_PX - 1, 39)
+                tief, hoch = kurve_zeichnen(draw, werte, 0, 12, DISPLAY_WIDTH_PX - 1, 39)
+                # Marken links: rechts endet die Kurve auf dem AKTUELLEN Wert,
+                # und der ist der wichtigste Punkt des Schirms — den deckt
+                # nichts zu.
+                marke_zeichnen(draw, 0, 12, hoch, True, self._font)
+                marke_zeichnen(draw, 0, 43, tief, False, self._font)
             else:
                 draw.text((18, 26), "kein Verlauf", font=self._font, fill="white")
             draw.text((0, 53), name[:21], font=self._font, fill="white")

@@ -189,10 +189,15 @@ def test_andere_schirme_bleiben_text() -> None:
 
 def test_zeitfenster_wechseln_und_kommen_zurueck() -> None:
     """Der Wechsel hängt an der Uhr, nicht an der Bildrate."""
-    gesehen = {face.aktuelles_fenster(t)[0] for t in (0.0, 7.0, 13.0, 19.0)}
+    schritt = face.HISTORY_SWITCH_SECONDS
+    gesehen = {face.aktuelles_fenster(n * schritt)[0] for n in range(len(face.HISTORY_WINDOWS))}
     assert gesehen == {w for w, _ in face.HISTORY_WINDOWS}
     # Innerhalb eines Intervalls bleibt es stehen.
-    assert face.aktuelles_fenster(1.0) == face.aktuelles_fenster(5.0)
+    assert face.aktuelles_fenster(1.0) == face.aktuelles_fenster(schritt - 1.0)
+    # Und nach einer vollen Runde ist es wieder das erste.
+    assert face.aktuelles_fenster(0.0) == face.aktuelles_fenster(
+        schritt * len(face.HISTORY_WINDOWS)
+    )
 
 
 def test_jedes_fenster_hat_eine_beschriftung() -> None:
