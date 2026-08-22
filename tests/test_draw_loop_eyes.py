@@ -143,3 +143,59 @@ def test_alert_und_action_sind_im_schoner_unerreichbar() -> None:
     """
     assert face.ALERT_AFTER_ROTATION_SECONDS < face.SCREENSAVER_AFTER_SECONDS
     assert face.ACTION_FLASH_SECONDS < face.SCREENSAVER_AFTER_SECONDS
+
+
+class FakeVerlaufDisplay(FakeEyesDisplay):
+    """Display, das zusätzlich den Verlaufs-Schirm kann."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.verlauf_calls: list[tuple[str, int, str]] = []
+
+    def draw_verlauf(self, name: str, werte: list[float], label: str, konto: float) -> None:
+        self.verlauf_calls.append((name, len(werte), label))
+
+
+def test_schirm_eins_zeigt_den_verlauf_statt_text() -> None:
+    ps = _ruhender_zustand()
+    ps.last_rotation_at = __import__("time").monotonic()  # gerade gedreht -> kein Schoner
+    ps.balance_history = {"24h": [1.0, 2.0, 3.0], "7d": [1.0, 2.0]}
+    display = FakeVerlaufDisplay()
+    _einmal_zeichnen(display, ps)
+    assert display.verlauf_calls, "Verlaufs-Schirm wurde nicht gezeichnet"
+    assert display.draw_calls == 0, "zusätzlich den Textschirm gezeichnet"
+
+
+def test_geoeffnetes_menue_zeigt_wieder_text() -> None:
+    """Im Menü muss die Auswahl lesbar bleiben — dort kein Diagramm."""
+    ps = _ruhender_zustand()
+    ps.last_rotation_at = __import__("time").monotonic()
+    ps.menu_open = True
+    display = FakeVerlaufDisplay()
+    _einmal_zeichnen(display, ps)
+    assert display.draw_calls > 0
+    assert not display.verlauf_calls
+
+
+def test_andere_schirme_bleiben_text() -> None:
+    ps = _ruhender_zustand()
+    ps.last_rotation_at = __import__("time").monotonic()
+    ps.current_screen = 3
+    display = FakeVerlaufDisplay()
+    _einmal_zeichnen(display, ps)
+    assert display.draw_calls > 0
+    assert not display.verlauf_calls
+
+
+def test_zeitfenster_wechseln_und_kommen_zurueck() -> None:
+    """Der Wechsel hängt an der Uhr, nicht an der Bildrate."""
+    gesehen = {face.aktuelles_fenster(t)[0] for t in (0.0, 7.0, 13.0, 19.0)}
+    assert gesehen == {w for w, _ in face.HISTORY_WINDOWS}
+    # Innerhalb eines Intervalls bleibt es stehen.
+    assert face.aktuelles_fenster(1.0) == face.aktuelles_fenster(5.0)
+
+
+def test_jedes_fenster_hat_eine_beschriftung() -> None:
+    for schluessel, label in face.HISTORY_WINDOWS:
+        assert schluessel and label, f"{schluessel}: leere Beschriftung"
+        assert len(label) <= 21, f"{label}: passt nicht in eine Zeile"

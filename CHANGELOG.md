@@ -6,6 +6,33 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-22
+
+### Changed
+
+- **Screen 1 now shows the energy balance over time instead of a text
+  summary.** A filled area chart fills the panel, the agent's name sits at the
+  bottom, the current balance top right. The window alternates every six
+  seconds between **24 hours** and **7 days** (founder request 2026-08-22).
+
+  The curve is scaled to its own value range, not to zero: an account moving
+  between 56.1k and 56.4k would otherwise be a flat line, and the movement is
+  what the screen is for — the absolute figure is printed next to it. When many
+  points are squeezed into 128 columns, each column keeps the **peak** value,
+  so a spike cannot be smoothed away.
+
+  The area is filled rather than drawn as a line because a 1-pixel line on a
+  128×64 monochrome panel breaks into dots on steep sections and is hard to
+  read from a distance. Same rule as the face: at one bit, shape carries.
+
+- Requires `cosmergon-agent >= 0.18.0` for `get_balance_history()`.
+
+### Note
+
+The history is fetched every five minutes, separately from the other polls —
+a 24-hour curve whose finest point is 15 minutes wide gains nothing from
+faster polling, and the Pi is on Wi-Fi.
+
 ## [0.5.0] — 2026-08-22
 
 ### Added

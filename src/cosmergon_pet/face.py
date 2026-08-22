@@ -148,6 +148,12 @@ EYE_MOODS: dict[str, tuple[str, float, bool]] = {
     "action": ("default", 0.55, False),  # zusammengekniffen, konzentriert
 }
 
+# Zeitfenster des Verlaufs-Schirms, im Wechsel gezeigt. Die Namen sind die des
+# Endpunkts `/agents/{id}/balance-history`; die Beschriftung steht daneben.
+HISTORY_WINDOWS: tuple[tuple[str, str], ...] = (("24h", "24 STD"), ("7d", "7 TAGE"))
+HISTORY_SWITCH_SECONDS = 6.0  # wie lange ein Fenster stehen bleibt
+HISTORY_POLL_SECONDS = 300  # der Verlauf aendert sich langsam — alle 5 min genuegt
+
 COMPASS_PRESETS = ("attack", "defend", "grow", "trade", "explore")
 
 # --- Evolution constants (mirror server: backend/app/core/entity_tiers.py) --
@@ -211,6 +217,11 @@ class PetState:
     last_user_action: dict | None = None
     connection_ok: bool = False
     last_error: str = ""
+
+    # Energie-Verlauf je Zeitfenster, fertig zum Zeichnen (nur die Werte —
+    # die Zeitstempel braucht die Anzeige nicht, sie spannt ueber die Breite).
+    balance_history: dict[str, list[float]] = field(default_factory=dict)
+    last_history_poll_at: float = 0.0
 
 
 # ----------------------------------------------------------------------------
@@ -790,6 +801,36 @@ class OledDisplay:
         self._last_eye_frame = roh
         self._device.display(bild)
 
+    def draw_verlauf(self, name: str, werte: list[float], label: str, konto: float) -> None:
+        """Verlaufs-Schirm: Kurve mit gefüllter Fläche, Name des Agenten unten.
+
+        Aufteilung der 64 px (Gründer-Vorgabe 22.08.2026: „unten der name des
+        agenten, darüber der verlauf des energie-kontos als kurve … mit
+        angelegter fläche drunter"):
+
+            0–9    Kopfzeile: Zeitfenster links, Kontostand rechts
+            10–51  die Fläche
+            52–63  Name des Agenten
+
+        Ohne Daten bleibt die Fläche leer und es steht ein Hinweis dort — eine
+        leere Fläche allein sähe aus wie ein Konto auf null.
+        """
+        from luma.core.render import canvas
+
+        from .sparkline import flaeche_zeichnen, kurz
+
+        with canvas(self._device) as draw:
+            draw.text((0, 0), label, font=self._font, fill="white")
+            stand = kurz(konto)
+            draw.text((DISPLAY_WIDTH_PX - 6 * len(stand), 0), stand, font=self._font, fill="white")
+            if len(werte) >= 2:
+                # 2 px Luft unter der Kopfzeile: ohne sie stösst die Fläche im
+                # Hochpunkt an die Schrift und sieht abgeschnitten aus.
+                flaeche_zeichnen(draw, werte, 0, 12, DISPLAY_WIDTH_PX - 1, 39)
+            else:
+                draw.text((18, 26), "kein Verlauf", font=self._font, fill="white")
+            draw.text((0, 53), name[:21], font=self._font, fill="white")
+
     def close(self) -> None:
         self._device.cleanup()
 
@@ -1146,6 +1187,7 @@ async def run_pet(
         poll_state_task = asyncio.create_task(_poll_state(agent, ps, stop))
         poll_events_task = asyncio.create_task(_poll_events(agent, ps, stop))
         poll_decisions_task = asyncio.create_task(_poll_decisions(agent, ps, stop))
+        history_task = asyncio.create_task(_history_loop(agent, ps, stop))
         draw_task = asyncio.create_task(_draw_loop(display, ps, stop))
 
         # Optional autonomous decision loop. Runs alongside button-driven
@@ -1209,7 +1251,13 @@ async def run_pet(
                 await handle_event(event, ps, agent, time.monotonic())
         finally:
             stop.set()
-            tasks = [poll_state_task, poll_events_task, poll_decisions_task, draw_task]
+            tasks = [
+                poll_state_task,
+                poll_events_task,
+                poll_decisions_task,
+                history_task,
+                draw_task,
+            ]
             if llm_task is not None:
                 tasks.append(llm_task)
             if tree_task is not None:
@@ -1291,6 +1339,37 @@ async def _poll_decisions(agent: CosmergonAgent, ps: PetState, stop: asyncio.Eve
         await asyncio.sleep(DECISION_POLL_SECONDS)
 
 
+async def _history_loop(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event) -> None:
+    """Holt den Energie-Verlauf für alle Fenster des Verlaufs-Schirms.
+
+    Getrennt von den übrigen Abfragen, weil er sich langsam ändert: alle fünf
+    Minuten genügt für eine 24-Stunden-Kurve, deren feinste Stützstelle 15
+    Minuten breit ist. Häufiger abzufragen würde die Anzeige nicht verbessern,
+    aber die Funkstrecke des Pi belasten.
+    """
+    while not stop.is_set():
+        for fenster, _ in HISTORY_WINDOWS:
+            try:
+                punkte = await agent.get_balance_history(window=fenster)
+                if punkte:
+                    ps.balance_history[fenster] = [float(p["balance"]) for p in punkte]
+                    ps.last_history_poll_at = time.monotonic()
+            except Exception as err:  # Anzeige darf nie ausfallen — nur melden
+                logger.warning("balance-history %s: %s", fenster, err)
+                ps.last_error = f"history: {err}"[:30]
+        await asyncio.sleep(HISTORY_POLL_SECONDS)
+
+
+def aktuelles_fenster(now: float) -> tuple[str, str]:
+    """Welches Zeitfenster der Verlaufs-Schirm gerade zeigt.
+
+    Reine Zeitfunktion ohne Zustand: bei jedem Bild neu berechnet, damit der
+    Wechsel nicht von der Bildrate abhängt.
+    """
+    n = int(now / HISTORY_SWITCH_SECONDS) % len(HISTORY_WINDOWS)
+    return HISTORY_WINDOWS[n]
+
+
 def _is_idle(ps: PetState, now: float) -> bool:
     """Screensaver eligibility: idle on screen 1, no menu, beyond threshold."""
     if ps.menu_open or ps.current_screen != 0:
@@ -1311,7 +1390,19 @@ async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
             now = time.monotonic()
             if not _is_idle(ps, now):
                 interval = 1.0 / DISPLAY_REFRESH_HZ
-                display.draw(render_screen(ps, now))
+                if ps.current_screen == 0 and not ps.menu_open and hasattr(display, "draw_verlauf"):
+                    # Schirm 1 ist der Verlauf (Gründer 22.08.2026). Im Menü
+                    # nicht — dort muss die Auswahl lesbar bleiben.
+                    fenster, label = aktuelles_fenster(now)
+                    st = ps.game_state
+                    display.draw_verlauf(
+                        st.agent_name if st and st.agent_name else "agent",
+                        ps.balance_history.get(fenster, []),
+                        label,
+                        float(st.energy) if st else 0.0,
+                    )
+                else:
+                    display.draw(render_screen(ps, now))
             elif hasattr(display, "draw_eyes"):
                 # Gezeichnete Augen (OLED): höhere Bildrate, weil hier animiert
                 # wird. Der Zustand geht roh hinein — die Übersetzung in eine
