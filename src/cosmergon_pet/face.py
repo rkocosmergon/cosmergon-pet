@@ -81,6 +81,13 @@ ENC_SW = 22  # Pin 15
 
 # --- Timing -----------------------------------------------------------------
 DISPLAY_REFRESH_HZ = 10  # redraw the display (10 FPS is plenty for OLED)
+# The screensaver draws ANIMATED eyes, so it needs a higher rate: at 10 FPS a
+# 0.18 s blink would be two frames and read as a glitch. The hardware ceiling
+# is 30.6 FPS (measured on a Pi Zero 2 W, S306: 32.7 ms per I2C transfer), so
+# 20 FPS leaves headroom. It does NOT cost 65 % bus load in practice — the
+# display only transfers when the image actually changed, and a resting face
+# changes in roughly a third of the frames.
+SCREENSAVER_REFRESH_HZ = 20
 STATE_POLL_SECONDS = 30  # /state poll; on_tick also fires every ~60 s
 DECISION_POLL_SECONDS = 90  # /decisions less often — saves API calls
 EVENTS_POLL_SECONDS = 45  # /events
@@ -112,6 +119,26 @@ FACES = {
     "dormant": "( z__z )",
     "alert": "( o__o )",
     "action": "( >__< )",
+}
+
+# Wie ein Pet-Zustand als Augenpaar aussieht: (Stimmung, Höhenfaktor, Neugier).
+#
+# Das Mapping ist absichtlich schmal — vier Stimmungen und ein Höhenfaktor
+# reichen für alle sechs Zustände, weil die Höhe stufenlos ist. `dormant` ist
+# kein eigener Gesichtsausdruck, sondern ein fast geschlossenes Auge; `action`
+# ist keine Wut, sondern ein zusammengekniffener Blick.
+#
+# ANGRY ist bewusst NICHT belegt: kein Zustand des Pets bedeutet Zorn. Die
+# Stimmung bleibt trotzdem in `robo_eyes`, weil sie zum übernommenen
+# Verhaltensumfang gehört und ein späterer Zustand (etwa ein Angriff auf eigene
+# Felder) sie brauchen könnte.
+EYE_MOODS: dict[str, tuple[str, float, bool]] = {
+    "thriving": ("happy", 1.00, False),
+    "content": ("default", 1.00, False),
+    "struggling": ("tired", 1.00, False),
+    "dormant": ("default", 0.12, False),  # Schlitz — das Pet schläft
+    "alert": ("default", 1.20, True),  # weit offen, folgt dem Drehknopf
+    "action": ("default", 0.55, False),  # zusammengekniffen, konzentriert
 }
 
 COMPASS_PRESETS = ("attack", "defend", "grow", "trade", "explore")
@@ -236,6 +263,20 @@ def apply_blink(face: str, ps: PetState, now: float) -> str:
         # left eye (position 2) wide
         return face[:2] + "o" + face[3:]
     return face
+
+
+def poll_just_fired(ps: PetState, now: float) -> bool:
+    """True kurz nach einer Backend-Abfrage — der Anlass zum Blinzeln.
+
+    Grafische Entsprechung zu `apply_blink`, das dasselbe Ereignis für die
+    Terminal-Darstellung in ein anderes ASCII-Gesicht übersetzt. Auf dem
+    Display blinzelt das Pet stattdessen: es holt Daten, also schlägt es kurz
+    die Augen zu. Ohne diese Kopplung wäre der Autoblinker reine Dekoration —
+    so zeigt das Gesicht tatsächlich etwas an.
+    """
+    letzte = max(ps.last_decisions_poll_at, ps.last_events_poll_at,
+                 ps.last_state_poll_at)
+    return 0.0 <= (now - letzte) < SCREENSAVER_BLINK_DURATION
 
 
 def total_active_cells(ps: PetState) -> int:
@@ -604,7 +645,12 @@ class StdoutDisplay:
             self._last_frame = frame
 
     def draw_big_face(self, face: str, cell_count: int = 0) -> None:
-        """Screensaver mode in the terminal — print the face plus cell dots."""
+        """Screensaver mode in the terminal — print the face plus cell dots.
+
+        Bekommt weiterhin das fertige ASCII-Gesicht: im Terminal gibt es keine
+        Pixel, dort bleibt `( ^__^ )` die Darstellung. Das OLED bekommt an
+        derselben Stelle den ZUSTAND und zeichnet daraus animierte Augen.
+        """
         dots = "." * min(cell_count, 30)
         frame = f"BIG: {face} cells={cell_count}"
         if frame != self._last_frame:
@@ -629,6 +675,8 @@ class OledDisplay:
         from luma.oled.device import sh1106
         from PIL import ImageFont
 
+        from .robo_eyes import RoboEyes
+
         self._serial = i2c(port=1, address=0x3C)
         self._device = sh1106(self._serial, rotate=0)
         # Default font (8 px) fits 21 chars × 8 lines on a 128×64 panel.
@@ -636,9 +684,25 @@ class OledDisplay:
         # Big monospace font for the screensaver — adaptive: starts at
         # SCREENSAVER_FONT_MAX_SIZE and shrinks until '( ^__^ )' (the
         # widest face string) fits in DISPLAY_WIDTH_PX with a small margin.
-        # This keeps the face as large as possible without ever clipping
-        # the parentheses.
+        # Seit dem Umstieg auf gezeichnete Augen nur noch für Geräte ohne
+        # PIL-Zeichenpfad relevant — bleibt als Rückfallebene bestehen.
         self._big_font = self._pick_big_font(ImageFont)
+
+        # Animierte Augen für den Screensaver. Das Objekt lebt so lange wie das
+        # Display, denn es TRÄGT den Animationszustand (Lidstellung, Blickziel,
+        # nächster Blinzler). Pro Bild neu erzeugt gäbe es keine Bewegung.
+        self._eyes = RoboEyes(
+            screen_width=DISPLAY_WIDTH_PX,
+            screen_height=DISPLAY_HEIGHT_PX,
+            autoblinker=True,
+            blink_interval=4.0,
+            blink_variation=3.0,
+            idle=True,
+            idle_interval=3.5,
+            idle_variation=2.5,
+        )
+        self._eye_height_base = self._eyes.eye_height
+        self._last_eye_frame: bytes | None = None
 
     @staticmethod
     def _pick_big_font(image_font_module) -> Any:
@@ -693,47 +757,32 @@ class OledDisplay:
             for i, line in enumerate(lines[:7]):
                 draw.text((0, 4 + i * 8), line[:21], font=self._font, fill="white")
 
-    def draw_big_face(self, face: str, cell_count: int = 0) -> None:
-        """Big-face screensaver — fills the panel, with a cell-bar at the bottom.
+    def draw_eyes(self, mood: str, now: float, blink: bool = False) -> None:
+        """Screensaver: animierte Augen über die volle Fläche.
 
-        cell_count: total active cells across owned fields. Rendered as one
-        small dot per cell at the very bottom (max 30 dots). Visually shows
-        the agent's territorial activity even in screensaver mode.
+        Ersetzt das ASCII-Gesicht samt Zell-Leiste am unteren Rand (Gründer,
+        22.08.2026: „die unteren 4 px für die Zell-Leiste verwerfen wir und
+        nutzen die ganze Fläche für das Gesicht").
+
+        Übertragen wird nur, wenn sich das Bild tatsächlich geändert hat. Der
+        Vergleich kostet 1 kB Speicher und einen Bytevergleich, spart aber die
+        I2C-Übertragung — die mit 32,7 ms das Teuerste im ganzen Ablauf ist
+        (Bildaufbau: 0,38 ms). Ein ruhendes Gesicht ändert sich in etwa einem
+        Drittel der Bilder, der Rest wäre reine Buslast.
         """
-        from luma.core.render import canvas
+        stimmung, hoehe, neugier = EYE_MOODS.get(mood, EYE_MOODS["content"])
+        self._eyes.set_mood(stimmung)
+        self._eyes.eye_height = max(2, int(self._eye_height_base * hoehe))
+        self._eyes.curiosity = neugier
+        if blink:
+            self._eyes.blink(now)
 
-        # Reserve 4 px at the bottom for the cell-bar so the face never
-        # overlaps the dots even at the largest font size.
-        face_area_h = DISPLAY_HEIGHT_PX - 4
-
-        with canvas(self._device) as draw:
-            try:
-                bbox = draw.textbbox((0, 0), face, font=self._big_font)
-                w = bbox[2] - bbox[0]
-                h = bbox[3] - bbox[1]
-                x = (DISPLAY_WIDTH_PX - w) // 2 - bbox[0]
-                y = (face_area_h - h) // 2 - bbox[1]
-            except (AttributeError, TypeError):
-                # Pillow < 9.2: textbbox missing — fallback to roughly centred.
-                x, y = 8, 16
-            draw.text((x, y), face, font=self._big_font, fill="white")
-
-            if cell_count > 0:
-                self._draw_cell_bar(draw, cell_count)
-
-    @staticmethod
-    def _draw_cell_bar(draw: Any, count: int) -> None:
-        """Bottom cell-bar: 1 small dot per active cell, centred, max 30."""
-        dot_w = 3
-        dot_h = 2
-        gap = 1
-        n = min(count, 30)
-        total_w = n * (dot_w + gap) - gap
-        x_start = (DISPLAY_WIDTH_PX - total_w) // 2
-        y = DISPLAY_HEIGHT_PX - dot_h - 1  # 1 px from the bottom edge
-        for i in range(n):
-            x = x_start + i * (dot_w + gap)
-            draw.rectangle((x, y, x + dot_w - 1, y + dot_h - 1), fill="white")
+        bild = self._eyes.render(now)
+        roh = bild.tobytes()
+        if roh == self._last_eye_frame:
+            return
+        self._last_eye_frame = roh
+        self._device.display(bild)
 
     def close(self) -> None:
         self._device.cleanup()
@@ -1254,13 +1303,24 @@ async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
     while not stop.is_set():
         try:
             now = time.monotonic()
-            if _is_idle(ps, now) and hasattr(display, "draw_big_face"):
-                face = FACES[mood_from_state(ps, now)]
-                face = apply_blink(face, ps, now)
+            if not _is_idle(ps, now):
+                interval = 1.0 / DISPLAY_REFRESH_HZ
+                display.draw(render_screen(ps, now))
+            elif hasattr(display, "draw_eyes"):
+                # Gezeichnete Augen (OLED): höhere Bildrate, weil hier animiert
+                # wird. Der Zustand geht roh hinein — die Übersetzung in eine
+                # Augenform gehört ins Display, nicht in den Ablauf.
+                interval = 1.0 / SCREENSAVER_REFRESH_HZ
+                display.draw_eyes(mood_from_state(ps, now), now,
+                                  blink=poll_just_fired(ps, now))
+            elif hasattr(display, "draw_big_face"):
+                # Terminal-Simulation: dort gibt es keine Pixel, das ASCII-
+                # Gesicht bleibt die Darstellung.
+                interval = 1.0 / DISPLAY_REFRESH_HZ
+                face = apply_blink(FACES[mood_from_state(ps, now)], ps, now)
                 display.draw_big_face(face, cell_count=total_active_cells(ps))
             else:
-                lines = render_screen(ps, now)
-                display.draw(lines)
+                display.draw(render_screen(ps, now))
         except Exception:
             logger.exception("draw failed")
         await asyncio.sleep(interval)
