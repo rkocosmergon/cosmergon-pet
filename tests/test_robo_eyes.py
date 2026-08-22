@@ -12,6 +12,8 @@ aufgetreten sind — sie sind kein Selbstzweck, sondern die Gegenprobe:
 """
 from __future__ import annotations
 
+from itertools import pairwise
+
 from cosmergon_pet.robo_eyes import ANGRY, DEFAULT, HAPPY, TIRED, RoboEyes
 
 
@@ -29,7 +31,7 @@ def _bloecke(bild, zeile: int) -> int:
     spalten = _spalten_mit_pixeln(bild, zeile)
     if not spalten:
         return 0
-    return 1 + sum(1 for a, b in zip(spalten, spalten[1:]) if b - a > 1)
+    return 1 + sum(1 for a, b in pairwise(spalten) if b - a > 1)
 
 
 def test_kein_auge_zerfaellt_in_mehrere_bloecke() -> None:

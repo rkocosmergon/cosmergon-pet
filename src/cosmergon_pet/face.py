@@ -132,6 +132,15 @@ FACES = {
 # Stimmung bleibt trotzdem in `robo_eyes`, weil sie zum übernommenen
 # Verhaltensumfang gehört und ein späterer Zustand (etwa ein Angriff auf eigene
 # Felder) sie brauchen könnte.
+#
+# ⚠ `alert` und `action` sind hier VORSORGE, keine sichtbare Anzeige: die Augen
+# erscheinen nur im Bildschirmschoner, und der verlangt SCREENSAVER_AFTER_SECONDS
+# (30 s) ohne Eingabe — während `alert` 0,8 s nach einer Drehung und `action`
+# 2,5 s nach einer Aktion gilt. Die Bedingungen schliessen sich aus, beide
+# Zustände zeigen deshalb den Textschirm mit dem ASCII-Gesicht. Die Einträge
+# stehen trotzdem hier: sie sind die Antwort auf die Frage "und wenn doch",
+# und `test_alert_und_action_sind_im_schoner_unerreichbar` schlägt an, falls
+# jemand eine der drei Zeitkonstanten so verschiebt, dass sie erreichbar werden.
 EYE_MOODS: dict[str, tuple[str, float, bool]] = {
     "thriving": ("happy", 1.00, False),
     "content": ("default", 1.00, False),

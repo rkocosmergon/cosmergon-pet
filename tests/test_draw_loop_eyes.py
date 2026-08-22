@@ -129,3 +129,16 @@ def test_augenformen_verweisen_nur_auf_bekannte_stimmungen() -> None:
     for zustand, (stimmung, hoehe, _) in face.EYE_MOODS.items():
         assert stimmung in erlaubt, f"{zustand}: unbekannte Stimmung {stimmung}"
         assert 0.0 < hoehe <= 2.0, f"{zustand}: unplausibler Höhenfaktor {hoehe}"
+
+
+def test_alert_und_action_sind_im_schoner_unerreichbar() -> None:
+    """Hält die Aussage im Kommentar an EYE_MOODS fest — als Rechnung, nicht als Meinung.
+
+    Der Bildschirmschoner verlangt 30 s ohne Eingabe; `alert` gilt 0,8 s nach
+    einer Drehung, `action` 2,5 s nach einer Aktion. Beide können dort also
+    nicht auftreten. Wird eine der drei Konstanten verschoben, ändert sich das
+    — und dann muss jemand die Augenformen für diese Zustände wirklich
+    ansehen, statt sie weiter für Vorsorge zu halten.
+    """
+    assert face.ALERT_AFTER_ROTATION_SECONDS < face.SCREENSAVER_AFTER_SECONDS
+    assert face.ACTION_FLASH_SECONDS < face.SCREENSAVER_AFTER_SECONDS
