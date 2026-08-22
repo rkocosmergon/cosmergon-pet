@@ -23,19 +23,23 @@ if [ -z "$anforderung" ]; then
 fi
 noetig=${anforderung#cosmergon-agent>=}
 
-auf_pypi=$(curl -sf "https://pypi.org/pypi/cosmergon-agent/json" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])') || {
+# Bewusst der /simple/-Index, NICHT die JSON-API: letztere liegt hinter einem
+# CDN-Cache und meldete am 22.08.2026 noch 0.18.0, als 0.19.0 laengst
+# ausgeliefert wurde. Ein Gate, das eine vorhandene Version fuer fehlend
+# erklaert, blockiert grundlos — und wer das zweimal erlebt, umgeht es.
+# /simple/ ist der Index, aus dem pip selbst aufloest: er ist die Wahrheit,
+# an der das Release spaeter scheitern oder gelingen wird.
+index=$(curl -sf "https://pypi.org/simple/cosmergon-agent/") || {
     echo "⚠️  PyPI nicht erreichbar — Pruefung uebersprungen"
     exit 0
 }
+auf_pypi=$(printf '%s' "$index" \
+    | grep -oE 'cosmergon_agent-[0-9]+\.[0-9]+\.[0-9]+' \
+    | sed 's/cosmergon_agent-//' | sort -V | tail -1)
 
-echo "gefordert: $noetig   auf PyPI: $auf_pypi"
+echo "gefordert: $noetig   hoechste auf PyPI: $auf_pypi"
 
-if python3 -c "
-import sys
-def teile(v): return [int(x) for x in v.split('.')]
-sys.exit(0 if teile('$auf_pypi') >= teile('$noetig') else 1)
-"; then
+if printf '%s\n%s\n' "$noetig" "$auf_pypi" | sort -V -C; then
     echo "✅ SDK-Anforderung ist auf PyPI erfuellbar"
 else
     cat <<MELDUNG

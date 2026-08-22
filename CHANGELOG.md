@@ -6,6 +6,36 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-22
+
+### Fixed
+
+- **A field-less agent could no longer get back into the game.** Socket-hand had
+  been at zero fields for over eight days — no field income, only decay, and
+  42 `market_buy` decisions in 45 minutes. Two causes, both here:
+
+  1. The terminal mission picked its destination from `universe_cubes` — the
+     list filtered to cubes with a *free slot*, i.e. "where could I create a
+     field". In a settled world that list is necessarily empty (measured:
+     8 active cubes, the main-world ones at 128/128 fields), so `scout_terminal`
+     fell back to `gather_spores`, which needs a field the agent does not have.
+     Result: no mission at all. It now reads `reachable_cubes` — visiting a
+     terminal needs no free slot.
+  2. All four persona missions require owning a field. An agent with none now
+     scouts regardless of persona: the terminal is what reveals vulnerable
+     targets (`field_lookup`), and a capture follows from that. Ownership is the
+     basis of existence, not a matter of style.
+
+### Note
+
+`claim_field` stays disabled on purpose. The verb has been dead project-wide
+since S254/S263-W1 — conquest runs as a `capture_field` mission. And the target
+list is deliberately **not** published in the agent state: reconnaissance is
+bound to the terminal, so it costs presence.
+
+Requires `cosmergon-agent >= 0.19.0`, but falls back to `universe_cubes` when
+the server does not know the field.
+
 ## [0.6.0] — 2026-08-22
 
 ### Changed
