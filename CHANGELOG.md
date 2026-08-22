@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-08-22
+
+> **Note for PyPI users:** the previous published release was 0.4.0. Versions
+> 0.4.1–0.4.3 were tagged in the changelog but never published, so installing
+> from PyPI has been three versions behind — most notably without the social
+> cadence from 0.4.3, which stops the once-per-minute proposal loop that pinned
+> a live agent's reputation at the saturation floor. Installing from GitHub
+> (the documented path in the README and installer) was unaffected. This
+> release carries 0.4.1–0.4.4 together.
+
 ### Fixed
 
 - **Both decision loops now obtain the game state themselves instead of
