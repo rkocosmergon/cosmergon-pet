@@ -432,3 +432,79 @@ def test_propose_from_template_params_genestet_und_free_tier() -> None:
         missing = required_slots[tid] - set(inner["slots"])
         assert not missing, f"{persona}/{tid}: fehlende Slots {missing}"
         assert inner["mode"] == "targeted"
+
+
+# ---------------------------------------------------------------------------
+# S306 — Der feldlose Agent muss zurückfinden
+# ---------------------------------------------------------------------------
+
+
+def _cube(name: str = "c1") -> Any:
+    return SimpleNamespace(id=f"cube-{name}", name=name)
+
+
+def _feldloser_zustand(*, persona: str, erreichbar: list[Any], bauplaetze: list[Any]) -> Any:
+    """Socket-hands Lage am 22.08.2026: kein Feld, Welt voll, Cubes erreichbar."""
+    st = _make_state(persona=persona, fields=[], cubes=bauplaetze)
+    st.reachable_cubes = erreichbar
+    return st
+
+
+def test_terminal_wird_ueber_erreichbare_cubes_gewaehlt() -> None:
+    """Der heutige Ausfall: `universe_cubes` ist in voller Welt leer.
+
+    Vorher las die Terminal-Wahl genau diese Liste — und fiel deshalb auf
+    `gather_spores` zurück, das ein eigenes Feld braucht. Ergebnis: `{}`, keine
+    Mission, der Agent blieb stehen.
+    """
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    st = _feldloser_zustand(persona="scientist", erreichbar=[_cube()], bauplaetze=[])
+    params = resolve_action_params(st, "start_mission", "scientist")
+    assert params, "keine Mission trotz erreichbarem Cube"
+    assert params["mission_type"] == "scout_terminal"
+    assert params["params"]["cube_id"] == "cube-c1"
+
+
+def test_feldloser_klaert_auf_egal_welche_persona() -> None:
+    """Besitz ist Existenzgrundlage, keine Stilfrage.
+
+    `diplomat` bekäme sonst `patrol_field`, `warrior` `gather_spores` — beide
+    brauchen ein eigenes Feld und liefern `{}`.
+    """
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    for persona in ("diplomat", "warrior", "trader", "farmer", "expansionist"):
+        st = _feldloser_zustand(persona=persona, erreichbar=[_cube()], bauplaetze=[])
+        params = resolve_action_params(st, "start_mission", persona)
+        assert params.get("mission_type") == "scout_terminal", (
+            f"{persona}: {params.get('mission_type')} statt Aufklärung"
+        )
+
+
+def test_agent_mit_feld_behaelt_seine_persona_mission() -> None:
+    """Der Notfallweg darf den Normalbetrieb nicht überschreiben."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    feld = SimpleNamespace(id="f1", active_cell_count=100, hole_count=0, entity_tier=1)
+    st = _make_state(persona="diplomat", fields=[feld], cubes=[])
+    st.reachable_cubes = [_cube()]
+    params = resolve_action_params(st, "start_mission", "diplomat")
+    assert params.get("mission_type") != "scout_terminal"
+
+
+def test_ohne_erreichbaren_cube_keine_terminal_mission() -> None:
+    """Kein Ziel → kein Versuch. Ein leeres params-Objekt wäre ein 422."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    st = _feldloser_zustand(persona="scientist", erreichbar=[], bauplaetze=[])
+    assert resolve_action_params(st, "start_mission", "scientist") == {}
+
+
+def test_alter_server_ohne_reachable_cubes_faellt_zurueck() -> None:
+    """Backend < S306 kennt das Feld nicht — dann gilt die alte Liste."""
+    from cosmergon_pet.decider_tree import _reachable_cubes
+
+    st = _make_state(cubes=[_cube("alt")])
+    assert not hasattr(st, "reachable_cubes")
+    assert [c.id for c in _reachable_cubes(st)] == ["cube-alt"]

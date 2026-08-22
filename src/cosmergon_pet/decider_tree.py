@@ -180,7 +180,24 @@ def _fields(state: GameState) -> list[Any]:
 
 
 def _universe_cubes(state: GameState) -> list[Any]:
+    """Cubes mit freiem Slot — die Frage „wo koennte ich ein Feld anlegen".
+
+    NUR fuer `create_field` verwenden. Fuer Navigation und Aufklaerung ist
+    `_reachable_cubes` richtig: ein Terminalbesuch braucht keinen freien Slot,
+    und in einer besiedelten Welt ist DIESE Liste zwangslaeufig leer.
+    """
     return list(getattr(state, "universe_cubes", []) or [])
+
+
+def _reachable_cubes(state: GameState) -> list[Any]:
+    """Cubes, die der Koerper erreichen kann — ohne Slot-Filter (S306).
+
+    Faellt auf `universe_cubes` zurueck, wenn der Server das Feld noch nicht
+    kennt (Backend < S306). Ohne diesen Rueckfall verloeren aeltere Server
+    still die Terminal-Wahl.
+    """
+    erreichbar = list(getattr(state, "reachable_cubes", []) or [])
+    return erreichbar or _universe_cubes(state)
 
 
 def _market_buyable(state: GameState) -> list[Any]:
@@ -625,8 +642,23 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
         "diplomat": "patrol_field",  # Diplomatischer Rundgang
     }
     mission_type = mission_by_persona.get(persona, "gather_spores")
+
+    # S306 — Notfallweg vor Persona: wer KEIN Feld hat, klaert auf, egal welche
+    # Persona er traegt. Alle anderen Missionsarten setzen eigenen Besitz
+    # voraus (`gather_spores`/`patrol_field` brauchen ein Feld, das es nicht
+    # gibt) und liefern `{}` — der Agent bliebe ohne jede Mission.
+    # Aufklaerung ist dann kein Stil, sondern der einzige Weg zurueck: das
+    # Terminal nennt verwundbare Ziele (`field_lookup`), und daraus wird eine
+    # Eroberung. Besitz ist Existenzgrundlage, keine Geschmacksfrage.
+    if not _fields(state) and _reachable_cubes(state):
+        mission_type = "scout_terminal"
+
     if mission_type == "scout_terminal":
-        cubes = _universe_cubes(state)
+        # S306: erreichbare Cubes, nicht Bauplaetze. Vorher stand hier
+        # `_universe_cubes` — in einer vollen Welt immer leer, wodurch die
+        # Terminal-Mission auf `gather_spores` zurueckfiel und ein feldloser
+        # Agent dort endgueltig strandete.
+        cubes = _reachable_cubes(state)
         if not cubes:
             mission_type = "gather_spores"  # Fallback auf den Feld-Weg
         else:
