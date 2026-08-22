@@ -6,6 +6,50 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-22
+
+### Added
+
+- **Animated robot eyes on the OLED screensaver** (`cosmergon_pet.robo_eyes`).
+  The idle screen no longer prints an ASCII face like `( ^__^ )` — it draws a
+  pair of eyes that blink, look around, and change shape with the agent's
+  state. The eyes are drawn parametrically, not from sprite images: a
+  half-lowered lid is a number, so every in-between state exists without an
+  extra asset.
+
+  Behaviour follows the documented API of the **FluxGarage RoboEyes** Arduino
+  library by Dennis Hoelscher (configurable size and spacing, four moods, eight
+  gaze directions, autoblinker, idle motion, confused/laugh shakes, flicker).
+  **No source code was taken from it.** RoboEyes is GPL-3.0 and this project is
+  MIT, so a copy would have relicensed the published Pet; it also targets
+  `Adafruit_GFX`, while the Pet draws through `luma.oled` and PIL. Behaviour is
+  not copyrightable, implementations are.
+
+- `scripts/preview-robo-eyes.py` renders a contact sheet and an animated GIF of
+  every state, so the face can be reviewed without hardware.
+
+### Changed
+
+- The screensaver uses the **full 128×64 panel**. The 4-pixel cell-bar along the
+  bottom edge is gone.
+- Screensaver refresh rate raised from 10 to 20 Hz — at 10 Hz a 0.18 s blink is
+  two frames and reads as a glitch. Measured hardware ceiling is 30.6 Hz
+  (32.7 ms per I²C transfer on a Pi Zero 2 W).
+- The OLED only transfers a frame when the image actually changed. Measured on
+  the device: 105 rendered frames produced 11 distinct images, so roughly nine
+  out of ten transfers are skipped. The higher frame rate therefore costs less
+  bus time than the old 10 Hz unconditional redraw.
+- The draw loop passes the agent **state** to the display instead of a finished
+  face string. How that state looks is now the display's decision — the console
+  simulation keeps its ASCII face unchanged.
+
+### Note
+
+`alert` and `action` cannot appear on the screensaver: it requires 30 s without
+input, while those states last 0.8 s and 2.5 s *after* an input. Their eye
+shapes exist as a fallback and are covered by a test that recomputes this from
+the three timing constants.
+
 ## [0.4.4] — 2026-08-22
 
 > **Note for PyPI users:** the previous published release was 0.4.0. Versions
