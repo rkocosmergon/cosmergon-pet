@@ -30,6 +30,7 @@ from typing import Any
 
 from cosmergon_agent import CosmergonAgent
 
+from .agent_state import StateSource
 from .decider_tree import VALID_ACTIONS, TreeDecider
 
 logger = logging.getLogger(__name__)
@@ -115,13 +116,16 @@ async def _one_tree_decision(
     decider: TreeDecider,
     on_decision: Any | None,
     backoff: _Backoff | None = None,
+    state_source: StateSource | None = None,
 ) -> None:
     """Single decision round — never raises."""
-    state = getattr(agent, "state", None)
+    # S306: obtain the state instead of assuming someone else supplied it.
+    # This used to read `agent.state` and return on `None` with a debug line,
+    # so a loop without an external poller skipped every round in silence —
+    # "started" in the log, zero actions in reality. See `agent_state`.
+    source = state_source or StateSource()
+    state = await source.current(agent)
     if state is None:
-        # _poll_state mirrors agent._state from /state polling. If still
-        # None, the SDK has not yet seen a state — skip this tick.
-        logger.debug("tree_decision: agent.state still None, skip")
         return
 
     blocked = backoff.blocked() if backoff is not None else frozenset()
@@ -189,6 +193,12 @@ async def tree_decision_loop(
     Mirrors the lifecycle contract of ``llm_decision_loop``: errors caught and
     logged; the loop never exits on its own except via ``stop`` being set.
 
+    The loop obtains the ``GameState`` itself (S306): it prefers a state that
+    someone else keeps fresh — inside the Pet that is the display's polling
+    task — and fetches one via ``agent.refresh_state()` when nobody does. It is
+    therefore usable standalone, without a Pet around it, and a state that stays
+    absent is reported at WARNING instead of skipped in silence.
+
     Args:
         agent: SDK agent, must already be opened via ``async with agent``.
         decider: ``TreeDecider`` instance (or any class with the same
@@ -202,6 +212,9 @@ async def tree_decision_loop(
     """
     stop = stop or asyncio.Event()
     backoff = _Backoff()
+    # One instance for the whole loop: the counter inside decides when a
+    # missing state stops being a hiccup and becomes worth a warning.
+    state_source = StateSource()
     logger.info(
         "tree_decision_loop started decider=%s interval=%.1fs",
         getattr(decider, "name", "tree"),
@@ -210,7 +223,7 @@ async def tree_decision_loop(
     while not stop.is_set():
         backoff.naechste_runde()
         try:
-            await _one_tree_decision(agent, decider, on_decision, backoff)
+            await _one_tree_decision(agent, decider, on_decision, backoff, state_source)
         except Exception:
             # Catch-all: nothing in this loop is allowed to kill the Pet.
             logger.warning("tree_decision_loop iteration failed", exc_info=True)

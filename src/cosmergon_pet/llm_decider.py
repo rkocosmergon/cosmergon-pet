@@ -44,6 +44,7 @@ from typing import Any
 
 from cosmergon_agent import CosmergonAgent
 
+from .agent_state import StateSource
 from .face import EVOLUTION_ENERGY_COST, REIFE_THRESHOLDS, TIER_REQUIRED_TYPE
 from .llm import LLMProvider, LLMProviderError
 
@@ -413,6 +414,9 @@ async def llm_decision_loop(
             to flash an "LLM acted" indicator.
     """
     stop = stop or asyncio.Event()
+    # One instance for the whole loop — its counter decides when a missing
+    # state stops being a hiccup and becomes worth a warning (S306).
+    state_source = StateSource()
     logger.info(
         "llm_decision_loop started provider=%s model=%s interval=%.1fs",
         provider.name,
@@ -421,7 +425,7 @@ async def llm_decision_loop(
     )
     while not stop.is_set():
         try:
-            await _one_decision(agent, provider, on_decision)
+            await _one_decision(agent, provider, on_decision, state_source)
         except Exception:
             # Catch-all: nothing in this loop is allowed to kill the Pet.
             logger.warning("llm_decision_loop iteration failed", exc_info=True)
@@ -596,8 +600,19 @@ async def _one_decision(
     agent: CosmergonAgent,
     provider: LLMProvider,
     on_decision: callable | None,  # type: ignore[type-arg]
+    state_source: StateSource | None = None,
 ) -> None:
     """Single decision round. Logged but does not raise."""
+    # S306: obtain the state before using it. Previously `agent.state` went
+    # unchecked into `_build_action_choices`, which then collapsed to the
+    # `wait` line only — the exact failure diagnosed on 2026-05-04 and patched
+    # back then by mirroring into the SDK's private slot from `face.py`.
+    # Without a state there is nothing to decide, so skip the round rather
+    # than ask the model about an empty world.
+    source = state_source or StateSource()
+    state = await source.current(agent)
+    if state is None:
+        return
     # Reflection runs BEFORE the decision so the upcoming LLM call sees
     # a memory-prompt that already includes the freshly-written
     # self_reflection (importance=1.0 → renderer's "## Your Past Lessons"
@@ -608,11 +623,11 @@ async def _one_decision(
     # constrain the LLM via JSON-Schema, and to validate the response.
     # Single source of truth: prompt + schema + validator can never
     # disagree about what is actually offered.
-    choices = _build_action_choices(agent.state)
-    world = _format_world(agent.state, choices)
+    choices = _build_action_choices(state)
+    world = _format_world(state, choices)
     schema = _build_decision_schema(choices)
-    persona = getattr(agent.state, "persona_type", "") or ""
-    name = getattr(agent.state, "agent_name", "") or ""
+    persona = getattr(state, "persona_type", "") or ""
+    name = getattr(state, "agent_name", "") or ""
     system_prompt = _build_system_prompt(persona, name)
 
     _maybe_dump_prompt(agent, system_prompt, memory, world, schema)

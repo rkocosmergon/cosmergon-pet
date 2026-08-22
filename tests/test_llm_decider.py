@@ -134,7 +134,11 @@ def test_one_decision_executes_action() -> None:
 
 def test_one_decision_wait_skips_act() -> None:
     mod = _import_or_skip()
-    agent = _make_agent()
+    # S306: der Pruefgegenstand ist die Aktions-Behandlung, nicht der leere
+    # Zustand. Ohne State wird seit S306 gar nicht mehr entschieden (der
+    # Decider fragte sonst das Modell ueber eine leere Welt) — deshalb hier
+    # ein echter State statt des bequemen Defaults.
+    agent = _make_agent(_make_state(field_ids=[("f1", 1)]))
     provider = _make_provider({"action": "wait", "params": {}})
     callback_calls: list[tuple] = []
 
@@ -151,7 +155,11 @@ def test_one_decision_provider_error_keeps_pet_alive() -> None:
     mod = _import_or_skip()
     from cosmergon_pet.llm import LLMProviderError
 
-    agent = _make_agent()
+    # S306: der Pruefgegenstand ist die Aktions-Behandlung, nicht der leere
+    # Zustand. Ohne State wird seit S306 gar nicht mehr entschieden (der
+    # Decider fragte sonst das Modell ueber eine leere Welt) — deshalb hier
+    # ein echter State statt des bequemen Defaults.
+    agent = _make_agent(_make_state(field_ids=[("f1", 1)]))
     provider = _make_provider(error=LLMProviderError("boom"))
     callback_calls: list[tuple] = []
 
@@ -478,7 +486,11 @@ def test_disallowed_action_dropped_not_executed() -> None:
     before agent.act() is called — defense-in-depth against compromised LLM.
     """
     mod = _import_or_skip()
-    agent = _make_agent()
+    # S306: der Pruefgegenstand ist die Aktions-Behandlung, nicht der leere
+    # Zustand. Ohne State wird seit S306 gar nicht mehr entschieden (der
+    # Decider fragte sonst das Modell ueber eine leere Welt) — deshalb hier
+    # ein echter State statt des bequemen Defaults.
+    agent = _make_agent(_make_state(field_ids=[("f1", 1)]))
     provider = _make_provider({"action": "delete_account", "params": {}})
     callback_calls: list[tuple] = []
 
@@ -730,3 +742,29 @@ if __name__ == "__main__":
     test_safe_memory_tolerates_missing_method()
     test_safe_memory_tolerates_fetch_exception()
     print("OK")
+
+
+def test_one_decision_without_state_does_not_ask_the_model() -> None:
+    """S306: no state means nothing to decide — the provider stays unasked.
+
+    Before S306 ``agent.state`` went unchecked into ``_build_action_choices``,
+    which collapsed to the ``wait`` line only. The Pet then asked the model
+    about an empty world and looked busy while achieving nothing — the failure
+    diagnosed on 2026-05-04 and worked around in ``face.py`` by mirroring into
+    the SDK's private ``_state``.
+    """
+    mod = _import_or_skip()
+    agent = _make_agent()  # state=None, and no refresh_state available
+    agent.refresh_state = AsyncMock(return_value=None)
+    provider = _make_provider({"action": "wait", "params": {}})
+    callback_calls: list[tuple] = []
+
+    asyncio.run(
+        mod._one_decision(
+            agent, provider, lambda a, p, e, s: callback_calls.append((a, s))
+        )
+    )
+
+    provider.decide.assert_not_awaited()
+    agent.act.assert_not_awaited()
+    assert callback_calls == []

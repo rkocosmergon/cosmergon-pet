@@ -1188,15 +1188,24 @@ async def _poll_state(agent: CosmergonAgent, ps: PetState, stop: asyncio.Event) 
                 state = GameState.from_api(resp.json())
                 ps.game_state = state
                 # Mirror into the SDK's own state slot so consumers that read
-                # `agent.state` (the LLM-Decider, third-party hooks) see the
-                # latest snapshot. Without this, the SDK's `_state` stays
-                # `None` because Pet runs its own polling loop instead of the
-                # SDK's `on_tick` driver — the LLM-Decider then sees an empty
-                # GameState and `_build_action_choices` collapses to only the
-                # `wait` line. Diagnosed 2026-05-04 via the prompt-dump
-                # introduced in v0.1.19: 3/3 captured rounds had `world="(no
-                # state available — agent not yet connected)"` while
-                # `ps.game_state` was filled and `/state` returned 200 OK.
+                # `agent.state` (third-party hooks) see the latest snapshot
+                # without polling again. Pet runs its own loop instead of the
+                # SDK's `on_tick` driver, so `_state` would otherwise stay
+                # `None`.
+                #
+                # SUPERSEDED as a *fix* (S306): this line was added on
+                # 2026-05-04 because the LLM decider ran on an empty GameState
+                # and `_build_action_choices` collapsed to the `wait` line —
+                # diagnosed via the v0.1.19 prompt-dump (3/3 rounds showed
+                # `world="(no state available …)"` while `ps.game_state` was
+                # filled and `/state` returned 200 OK). Patching a *consumer's*
+                # missing input from the outside left the real gap open: a loop
+                # that cannot work without the state also did not ask for it,
+                # and stayed quiet when it was absent. Both loops now obtain it
+                # themselves (`agent_state.StateSource`), so this mirror is a
+                # convenience — saving them a redundant request — and no longer
+                # the thing that makes decisions work. Do not treat it as
+                # load-bearing; if it goes, the deciders keep deciding.
                 agent._state = state  # intentional cross-module sync
                 ps.connection_ok = True
                 ps.last_error = ""

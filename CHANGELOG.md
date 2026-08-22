@@ -6,6 +6,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Both decision loops now obtain the game state themselves instead of
+  assuming a caller supplies it — and say so when it is missing.** Reading
+  `agent.state` without ever fetching it made "someone else keeps it fresh" an
+  unwritten precondition. Inside the Pet that someone is `face.py`'s polling
+  task, which mirrors every `/state` response into the SDK's private slot
+  (`agent._state = state`) — a workaround added on 2026-05-04 after the LLM
+  decider was found running on an empty `GameState`, where
+  `_build_action_choices` collapsed to the `wait` line only.
+
+  The precondition was never documented, and its absence was silent:
+  `tree_loop` logged a DEBUG line and skipped the round, `llm_decider` passed
+  `None` straight through and degraded to `wait`. Running either loop outside
+  the Pet reproduces this at once — a container ran the tree loop for minutes,
+  logged nothing beyond "started", and executed zero actions; only the server's
+  records showed it.
+
+  Both loops now use the new `agent_state.StateSource`: prefer a state someone
+  else keeps fresh, fetch one via `agent.refresh_state()` when nobody does, and
+  emit a single WARNING once it has been absent for three consecutive rounds
+  (recovery is reported too). Inside the Pet nothing changes — the state is
+  already present, so no extra request is made. Both loops are now usable
+  standalone, without a Pet around them.
+
 ## [0.4.3] — 2026-08-15
 
 ### Fixed
