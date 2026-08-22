@@ -10,6 +10,7 @@ aufgetreten sind — sie sind kein Selbstzweck, sondern die Gegenprobe:
     wurde. Das Vorbild heisst "smoothly animated"; ohne Interpolation ist
     genau das nicht gegeben.
 """
+
 from __future__ import annotations
 
 from itertools import pairwise
@@ -70,8 +71,7 @@ def test_blick_faehrt_weich_und_nicht_sprunghaft() -> None:
     start = min(_spalten_mit_pixeln(augen.render(0.04), 32))
 
     augen.set_position("e")
-    kanten = [min(_spalten_mit_pixeln(augen.render(0.04 + n / 25.0), 32))
-              for n in range(1, 13)]
+    kanten = [min(_spalten_mit_pixeln(augen.render(0.04 + n / 25.0), 32)) for n in range(1, 13)]
 
     assert kanten[-1] > start, "der Blick erreicht die Zielrichtung nicht"
     assert len(set(kanten)) >= 4, f"die Bewegung springt statt zu fahren: {kanten}"
@@ -115,8 +115,7 @@ def test_zwei_augen_haben_eine_luecke() -> None:
 
 
 def test_stimmungen_erzeugen_verschiedene_bilder() -> None:
-    bilder = {m: RoboEyes(mood=m).render(0.0).tobytes()
-              for m in (DEFAULT, HAPPY, TIRED, ANGRY)}
+    bilder = {m: RoboEyes(mood=m).render(0.0).tobytes() for m in (DEFAULT, HAPPY, TIRED, ANGRY)}
     assert len(set(bilder.values())) == 4, "zwei Stimmungen sehen gleich aus"
 
 

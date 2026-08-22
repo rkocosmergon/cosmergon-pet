@@ -6,6 +6,7 @@ tatsächliche Durchlauf der auf der Hardware — und ein Tippfehler im
 Ablauf fiele erst dort auf, wo niemand einen Stacktrace sieht (der Ablauf
 fängt jede Ausnahme ab und schreibt sie ins Log).
 """
+
 from __future__ import annotations
 
 import asyncio

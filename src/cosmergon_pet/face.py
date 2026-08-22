@@ -41,20 +41,18 @@ Controls:
     Long press >1s    Pause/resume agent (or leave the menu)
 
 Screensaver:
-    After 30 s of no input on screen 1, the display switches to a
-    big-face mode: only the current mood face, centred and as large as
-    the panel allows. The first encoder turn or click brings back the
-    regular screen 1 immediately. Mood updates remain live in screensaver
-    mode (action / alert / struggling / etc. wirken auch dort).
+    After 30 s of no input on screen 1 the display switches to a pair of
+    animated robot eyes filling the whole panel (`cosmergon_pet.robo_eyes`).
+    They blink, look around and change shape with the agent's mood. The first
+    encoder turn or click brings back the regular screen 1 immediately.
 
-    Eye blinks (300 ms each, sourced from backend polls):
-        state-poll      -> left eye opens wide   ( o__X )
-        events-poll     -> right eye opens wide  ( X__o )
-        decisions-poll  -> both eyes squint      ( >__< )
+    The eyes blink whenever a backend poll fires — the agent fetching data is
+    what makes it close its eyes for a moment. Without that coupling the
+    blinking would be decoration; this way the face actually reports something.
 
-    Cell-bar at the bottom: one small dot per active cell across all
-    owned fields (max 30). Shows territorial activity at a glance even
-    in screensaver mode.
+    In `--simulate` there are no pixels, so the console keeps printing the
+    ASCII face (`( ^__^ )`) plus the cell dots. Both paths receive the same
+    mood; only the rendering differs.
 """
 
 from __future__ import annotations
@@ -283,8 +281,7 @@ def poll_just_fired(ps: PetState, now: float) -> bool:
     die Augen zu. Ohne diese Kopplung wäre der Autoblinker reine Dekoration —
     so zeigt das Gesicht tatsächlich etwas an.
     """
-    letzte = max(ps.last_decisions_poll_at, ps.last_events_poll_at,
-                 ps.last_state_poll_at)
+    letzte = max(ps.last_decisions_poll_at, ps.last_events_poll_at, ps.last_state_poll_at)
     return 0.0 <= (now - letzte) < SCREENSAVER_BLINK_DURATION
 
 
@@ -1320,8 +1317,7 @@ async def _draw_loop(display: Any, ps: PetState, stop: asyncio.Event) -> None:
                 # wird. Der Zustand geht roh hinein — die Übersetzung in eine
                 # Augenform gehört ins Display, nicht in den Ablauf.
                 interval = 1.0 / SCREENSAVER_REFRESH_HZ
-                display.draw_eyes(mood_from_state(ps, now), now,
-                                  blink=poll_just_fired(ps, now))
+                display.draw_eyes(mood_from_state(ps, now), now, blink=poll_just_fired(ps, now))
             elif hasattr(display, "draw_big_face"):
                 # Terminal-Simulation: dort gibt es keine Pixel, das ASCII-
                 # Gesicht bleibt die Darstellung.

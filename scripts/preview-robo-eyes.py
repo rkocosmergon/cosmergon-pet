@@ -9,6 +9,7 @@ Erzeugt zwei Dateien:
 
     python3 scripts/preview-robo-eyes.py [zielverzeichnis]
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,8 +56,7 @@ def kontaktblatt(ziel: Path) -> None:
             augen.eye_height = max(2, int(augen.eye_height * offen))
             bild = augen.render(0.0)
         x, y = (i % SPALTEN) * kw, (i // SPALTEN) * kh
-        blatt.paste(bild.convert("RGB").resize((128 * ZOOM, 64 * ZOOM), Image.NEAREST),
-                    (x, y))
+        blatt.paste(bild.convert("RGB").resize((128 * ZOOM, 64 * ZOOM), Image.NEAREST), (x, y))
         stift.text((x + 6, y + 64 * ZOOM + 4), name, fill=(150, 150, 160))
     blatt.save(ziel)
     print(f"{ziel}  ({len(KACHELN)} Kacheln)")
@@ -64,9 +64,15 @@ def kontaktblatt(ziel: Path) -> None:
 
 def bewegung(ziel: Path, sekunden: float = 8.0) -> None:
     """Eine durchgehende Szene — so, wie das Pet im Ruhezustand aussieht."""
-    augen = RoboEyes(autoblinker=True, blink_interval=1.6, blink_variation=1.0,
-                     idle=True, idle_interval=1.4, idle_variation=0.8,
-                     curiosity=True)
+    augen = RoboEyes(
+        autoblinker=True,
+        blink_interval=1.6,
+        blink_variation=1.0,
+        idle=True,
+        idle_interval=1.4,
+        idle_variation=0.8,
+        curiosity=True,
+    )
     augen._rng.seed(7)  # reproduzierbare Vorschau
     bilder: list[Image.Image] = []
     schritt = 1.0 / FPS
@@ -81,8 +87,7 @@ def bewegung(ziel: Path, sekunden: float = 8.0) -> None:
         if abs(t - 6.5) < schritt / 2:
             augen.set_mood(TIRED)
         bilder.append(augen.render(t).convert("P"))
-    bilder[0].save(ziel, save_all=True, append_images=bilder[1:],
-                   duration=int(1000 / FPS), loop=0)
+    bilder[0].save(ziel, save_all=True, append_images=bilder[1:], duration=int(1000 / FPS), loop=0)
     print(f"{ziel}  ({len(bilder)} Bilder, {sekunden:.0f} s)")
 
 

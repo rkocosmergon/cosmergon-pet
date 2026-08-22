@@ -236,8 +236,7 @@ class RoboEyes:
             self._auge(zeichner, links, oben, hoehe, seite=0)
         else:
             self._auge(zeichner, links, oben, hoehe, seite=-1)
-            self._auge(zeichner, links + self.eye_width + self.space_between,
-                       oben, hoehe, seite=+1)
+            self._auge(zeichner, links + self.eye_width + self.space_between, oben, hoehe, seite=+1)
         return bild
 
     def _auge(self, zeichner: Any, x: int, y: int, hoehe: int, seite: int) -> None:
@@ -256,12 +255,10 @@ class RoboEyes:
                 hoehe += zuwachs
 
         radius = min(self.border_radius, breite // 2, hoehe // 2)
-        zeichner.rounded_rectangle([x, y, x + breite, y + hoehe],
-                                   radius=radius, fill=1)
+        zeichner.rounded_rectangle([x, y, x + breite, y + hoehe], radius=radius, fill=1)
         self._lid(zeichner, x, y, breite, hoehe, seite)
 
-    def _lid(self, zeichner: Any, x: int, y: int, breite: int, hoehe: int,
-             seite: int) -> None:
+    def _lid(self, zeichner: Any, x: int, y: int, breite: int, hoehe: int, seite: int) -> None:
         """Legt das Stimmungs-Lid als SCHWARZE Fläche über das offene Auge.
 
         Bewusst als Abdeckung und nicht als eigene Augenform: so gibt es eine
@@ -280,8 +277,7 @@ class RoboEyes:
             # unteren Ecken des Auges nicht erreicht. Die Kuppel entsteht aus
             # den ohnehin runden OBEREN Ecken des Auges — unten muss glatt
             # abgeschnitten werden.
-            zeichner.rectangle(
-                [x - 2, y + hoehe - tiefe, x + breite + 2, y + hoehe + 2], fill=0)
+            zeichner.rectangle([x - 2, y + hoehe - tiefe, x + breite + 2, y + hoehe + 2], fill=0)
             return
         # TIRED hängt aussen, ANGRY innen — dieselbe Geometrie, gespiegelt.
         aussen_hoch = self.mood == ANGRY
