@@ -6,6 +6,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-08-23
+
+### Changed
+
+- Vendor re-sync with the source tree (`cosmergon-decider-tree` v2.2.3):
+  behavior-identical refactor — goal metric scoring split along its kind
+  seams, fieldless conquest move extracted. Source and vendor differ only
+  in the header paragraph and the persona_profiles import again.
+
 ## [0.8.3] — 2026-08-23
 
 ### Fixed

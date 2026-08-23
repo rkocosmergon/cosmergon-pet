@@ -644,6 +644,32 @@ def _resolve_propose_contract(state: GameState, persona: str) -> dict[str, Any]:
     }
 
 
+def _feldlos_eroberungs_zug(state: GameState) -> dict[str, Any] | None:
+    """v2.2.x: der situative Zug des Feldlosen — loot -> mega_bombs -> siege.
+
+    None heisst: der Server nennt keine Landweg-Fakten (aelter als v1.64.143)
+    — der Aufrufer faellt auf den S306-Scout-Weg zurueck. Schwelle 3 Bomben:
+    eine reisst ~12 Loecher (verwundbar ab >5), zwei Reserven gegen Heilung.
+    """
+    verfuegbar = getattr(state, "available_actions", None) or {}
+    sm_fakten = verfuegbar.get("start_mission") or {}
+    cf_fakten = verfuegbar.get("claim_field") or {}
+    bomben = int(sm_fakten.get("mega_bombs") or 0)
+    ziele = cf_fakten.get("targets") or []
+    loot = sm_fakten.get("richest_loot_field") or {}
+    if bomben >= 3 and ziele:
+        return _mission_payload(
+            "siege_field",
+            {"target_field_id": str(ziele[0]["field_id"]), "deadline_ticks": 2000},
+        )
+    if loot.get("field_id"):
+        return _mission_payload(
+            "gather_spores",
+            {"field_id": str(loot["field_id"]), "max_items": 10, "duration_ticks": 200},
+        )
+    return None
+
+
 def _mission_payload(mission_type: str, mission_params: dict[str, Any]) -> dict[str, Any]:
     """v2.2.2 — der Draht-Vertrag von start_mission, an EINER Stelle.
 
@@ -694,22 +720,9 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
     # Reserven gegen Heilung — Socket-still gelang die Kette mit 13, das
     # Minimum soll nicht Perfektion verlangen.
     if not _fields(state):
-        verfuegbar = getattr(state, "available_actions", None) or {}
-        sm_fakten = verfuegbar.get("start_mission") or {}
-        cf_fakten = verfuegbar.get("claim_field") or {}
-        bomben = int(sm_fakten.get("mega_bombs") or 0)
-        ziele = cf_fakten.get("targets") or []
-        loot = sm_fakten.get("richest_loot_field") or {}
-        if bomben >= 3 and ziele:
-            return _mission_payload(
-                "siege_field",
-                {"target_field_id": str(ziele[0]["field_id"]), "deadline_ticks": 2000},
-            )
-        if loot.get("field_id"):
-            return _mission_payload(
-                "gather_spores",
-                {"field_id": str(loot["field_id"]), "max_items": 10, "duration_ticks": 200},
-            )
+        zug = _feldlos_eroberungs_zug(state)
+        if zug is not None:
+            return zug
 
     # S306 — Notfallweg vor Persona: wer KEIN Feld hat, klaert auf, egal welche
     # Persona er traegt. Alle anderen Missionsarten setzen eigenen Besitz
@@ -922,117 +935,121 @@ def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dic
 # --- Score-Funktion (generisch, mit Goal-Metric) -----------------------------
 
 
+def _feldloser_missions_zug(
+    state: GameState, action: str, params: dict[str, Any], goal_metric: dict[str, Any]
+) -> bool:
+    """v2.2.1 (S307): Feldlos ist die Eroberungs-Kette neben create_field die
+    einzige NACHHALTIGE Income-Quelle — market_list ist ein Einmal-Boost.
+    Eigenes Praedikat, weil _predict_delta Missionen nicht modelliert (der
+    Sonderfall muss VOR dem delta-Guard greifen) — und weil die Bedingung
+    die Situations-Gatter traegt: feldlos + fuellbare Params + Energie-Ziel.
+    """
+    return (
+        action == "start_mission"
+        and bool(params)
+        and goal_metric.get("kind") == "energy_at_least"
+        and len(_fields(state)) == 0
+    )
+
+
 def score_action(
     state: GameState, action: str, params: dict[str, Any], goal_metric: dict[str, Any]
 ) -> float:
-    """Wie sehr reduziert die Action die Distanz zum Goal?
-    Returns float in [0, 1]. Höher = besser."""
-    delta = _predict_delta(state, action, params)
+    """Wie sehr reduziert die Action die Distanz zum Goal? [0, 1], hoeher = besser.
 
-    # v2.2.1 (S307): Feldlos ist die Eroberungs-Kette (start_mission ->
-    # gather/siege, Folge-capture spawnt der Server) neben create_field die
-    # einzige NACHHALTIGE Income-Quelle — market_list ist ein Einmal-Boost.
-    # Vor dem delta-Guard, weil _predict_delta Missionen nicht modelliert.
-    # 0.9 < 1.0 (create_field): existiert wirklich ein freier Slot, schlaegt
-    # Kaufen das Erobern; sonst ist create_field ohnehin invalid.
-    if (
-        action == "start_mission"
-        and params
-        and goal_metric.get("kind") == "energy_at_least"
-        and len(_fields(state)) == 0
-    ):
-        return 0.9
+    Duenner Flur: der Feldlos-Sonderfall greift VOR der delta-Logik
+    (_predict_delta modelliert Missionen nicht); alles andere entscheidet
+    ``_score_gegen_ziel``.
+    """
+    if _feldloser_missions_zug(state, action, params, goal_metric):
+        return 0.9  # v2.2.1: < 1.0 (create_field) — freier Slot schlaegt Erobern
+    return _score_gegen_ziel(state, action, params, goal_metric)
 
-    if not delta:
-        return 0.0
 
-    kind = goal_metric.get("kind", "")
+def _score_energie_ziel(
+    state: GameState, action: str, delta: dict[str, Any], goal_metric: dict[str, Any]
+) -> float:
+    target = float(goal_metric.get("target", 0))
+    gap = max(0.0, target - _energy(state))
+    if gap == 0:
+        return 0.1  # Goal erreicht, Action irrelevant aber kein negativ
+    # Sonderfall: 0 Fields + create_field ist EINZIGE sustainable Income-Quelle.
+    # Ohne Field gibt es kein Conway-Income, market_list ist einmaliger Boost,
+    # danach wieder im selben State. Bootstrap braucht create_field absolut.
+    if action == "create_field" and len(_fields(state)) == 0:
+        return 1.0
+    # Direktes Energy-Plus; 0.5 weil market_list ungewisser Verkauf
+    e_delta = delta.get("energy", 0.0) + delta.get("energy_listed", 0.0) * 0.5
+    return max(0.0, min(1.0, e_delta / gap))
 
-    if kind == "energy_at_least":
-        target = float(goal_metric.get("target", 0))
-        current = _energy(state)
-        gap = max(0.0, target - current)
-        if gap == 0:
-            return 0.1  # Goal erreicht, Action irrelevant aber kein negativ
-        # Sonderfall: 0 Fields + create_field ist EINZIGE sustainable Income-Quelle.
-        # Ohne Field gibt es kein Conway-Income, market_list ist einmaliger Boost,
-        # danach wieder im selben State. Bootstrap braucht create_field absolut.
-        if action == "create_field" and len(_fields(state)) == 0:
-            return 1.0
-        # Direktes Energy-Plus
-        e_delta = delta.get("energy", 0.0) + delta.get("energy_listed", 0.0) * 0.5
-        # 0.5 weil market_list ungewisser Verkauf
-        return max(0.0, min(1.0, e_delta / gap))
 
-    if kind == "avg_cells_at_least":
-        target = float(goal_metric.get("target", 100))
-        fields = _fields(state)
-        if not fields:
-            return 0.5 if action == "create_field" else 0.0
-        current = sum(getattr(f, "active_cell_count", 0) or 0 for f in fields) / len(fields)
-        gap = max(0.0, target - current)
-        if gap == 0:
-            return 0.1
-        # Direction-based scoring: jede Action die in richtige Richtung wirkt
-        # bekommt einen Mindest-Score, auch bei geringer Magnitude. Sonst
-        # wird bei vielen Fields der Cell-Anstieg pro place_cells (1/N) zu klein
-        # bewertet und Pet würde nie Cells nachfüllen (S171 Pulsar-eye-Befund).
-        avg_cells_delta = delta.get("avg_cells", 0.0)
-        if avg_cells_delta > 0:
-            # Right-direction action — base score 0.7, plus magnitude-Bonus.
-            magnitude_bonus = min(0.3, avg_cells_delta / gap)
-            return 0.7 + magnitude_bonus
-        elif avg_cells_delta < 0:
-            return 0.0  # Wrong direction (z.B. create_field reduziert avg_cells)
-        return 0.0  # No effect
+def _score_zellen_ziel(
+    state: GameState, action: str, delta: dict[str, Any], goal_metric: dict[str, Any]
+) -> float:
+    target = float(goal_metric.get("target", 100))
+    fields = _fields(state)
+    if not fields:
+        return 0.5 if action == "create_field" else 0.0
+    current = sum(getattr(f, "active_cell_count", 0) or 0 for f in fields) / len(fields)
+    gap = max(0.0, target - current)
+    if gap == 0:
+        return 0.1
+    # Direction-based scoring: jede Action die in richtige Richtung wirkt
+    # bekommt einen Mindest-Score, auch bei geringer Magnitude. Sonst
+    # wird bei vielen Fields der Cell-Anstieg pro place_cells (1/N) zu klein
+    # bewertet und Pet würde nie Cells nachfüllen (S171 Pulsar-eye-Befund).
+    avg_cells_delta = delta.get("avg_cells", 0.0)
+    if avg_cells_delta > 0:
+        # Right-direction action — base score 0.7, plus magnitude-Bonus.
+        return 0.7 + min(0.3, avg_cells_delta / gap)
+    return 0.0  # Wrong direction oder kein Effekt
 
+
+def _score_bestands_ziele(
+    state: GameState, action: str, delta: dict[str, Any], kind: str, goal_metric: dict[str, Any]
+) -> float:
+    """Die kleinen Ziel-Arten: Felder, Evolves, Muster, Vertraege, Inventar, Markt."""
     if kind == "field_count_at_least":
-        target = int(goal_metric.get("target", 1))
-        current = len(_fields(state))
-        gap = max(0, target - current)
+        gap = max(0, int(goal_metric.get("target", 1)) - len(_fields(state)))
         if gap == 0:
             return 0.1
-        # Direction-based: create_field bringt +1 Field, andere 0
-        if delta.get("field_count", 0) > 0:
-            return 0.8
-        return 0.0
-
+        return 0.8 if delta.get("field_count", 0) > 0 else 0.0
     if kind == "evolved_fields_at_least":
-        # Evolve-Action ist direkt zielführend
         return 1.0 if delta.get("evolved_fields", 0) > 0 else 0.0
-
     if kind == "patterns_established":
         return 0.8 if delta.get("patterns_established", 0) > 0 else 0.0
-
     if kind == "active_contracts_at_least":
-        target = int(goal_metric.get("target", 1))
-        # Wir kennen aktuelle contract-count nicht direkt; approximieren mit delta
         return 1.0 if delta.get("active_contracts", 0) > 0 else 0.0
-
     if kind == "all_fields_min_cells":
-        target = float(goal_metric.get("target", 30))
         # place_cells auf das Field mit den wenigsten Cells reduziert die Distanz
         if action == "place_cells":
             fewest = _fewest_cells_field(state)
             if fewest:
                 current = getattr(fewest, "active_cell_count", 0) or 0
-                if current < target:
+                if current < float(goal_metric.get("target", 30)):
                     return 0.9
         return 0.0
-
     if kind == "fields_use_inventory":
-        # Trader-Inventar-Use: create_field oder place_cells = gut
-        if action in ("create_field", "place_cells"):
-            return 0.8
-        return 0.0
-
+        return 0.8 if action in ("create_field", "place_cells") else 0.0
     if kind == "energy_growth_via_market":
-        # Trader-Markt-Spread: market_buy + market_list = gut
-        if action in ("market_buy", "market_list"):
-            return 0.8
-        return 0.0
-
+        return 0.8 if action in ("market_buy", "market_list") else 0.0
     return 0.0
+
+
+def _score_gegen_ziel(
+    state: GameState, action: str, params: dict[str, Any], goal_metric: dict[str, Any]
+) -> float:
+    """Dispatcher der Ziel-Metriken — Logik unveraendert seit v2.0.2, nur
+    entlang der kind-Naehte zerlegt (§11.2)."""
+    delta = _predict_delta(state, action, params)
+    if not delta:
+        return 0.0
+    kind = goal_metric.get("kind", "")
+    if kind == "energy_at_least":
+        return _score_energie_ziel(state, action, delta, goal_metric)
+    if kind == "avg_cells_at_least":
+        return _score_zellen_ziel(state, action, delta, goal_metric)
+    return _score_bestands_ziele(state, action, delta, kind, goal_metric)
 
 
 # --- Decision-Pipeline -------------------------------------------------------
