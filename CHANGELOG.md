@@ -6,6 +6,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-23
+
+### Added
+
+- **Conquest chain for fieldless agents** (TreeDecider): when the server
+  provides the land-route facts (`available_actions.start_mission` /
+  `.claim_field`, Cosmergon >= v1.64.143), a fieldless agent now loots the
+  richest loot field for mega bombs (`gather_spores` needs no owned field)
+  and sieges the first listed target at >= 3 bombs — the server spawns the
+  follow-up capture itself. The S306 scout fallback remains for older servers.
+
 ## [0.7.0] — 2026-08-22
 
 ### Fixed

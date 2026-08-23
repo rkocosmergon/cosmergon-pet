@@ -508,3 +508,65 @@ def test_alter_server_ohne_reachable_cubes_faellt_zurueck() -> None:
     st = _make_state(cubes=[_cube("alt")])
     assert not hasattr(st, "reachable_cubes")
     assert [c.id for c in _reachable_cubes(st)] == ["cube-alt"]
+
+
+# ---------------------------------------------------------------------------
+# S307 — Eroberungs-Kette: der Server nennt die Fakten, der Client geht den Weg
+# ---------------------------------------------------------------------------
+
+
+def _landweg_zustand(*, bomben: int, ziele: list, loot_id: str | None) -> Any:
+    """Socket-hands Lage am 23.08. NACH v1.64.143: der State trägt den Weg."""
+    st = _feldloser_zustand(persona="diplomat", erreichbar=[_cube()], bauplaetze=[])
+    sm: dict[str, Any] = {"mega_bombs": bomben}
+    if loot_id:
+        sm["richest_loot_field"] = {"field_id": loot_id, "bomb_boxes": 15}
+    st.available_actions = {
+        "start_mission": sm,
+        "claim_field": {"targets": ziele, "claim_ticks": 100},
+    }
+    return st
+
+
+def test_feldloser_ohne_bomben_lootet_das_reichste_feld() -> None:
+    """gather_spores braucht KEIN eigenes Feld — nur ein existierendes Ziel.
+
+    Vorher endete der Feldlose beim Terminal (Intel ohne Anschluss): 27
+    gather-Läufe von Socket-hand, alle vom 26.05., seither keiner."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    st = _landweg_zustand(bomben=0, ziele=[], loot_id="loot-94de")
+    params = resolve_action_params(st, "start_mission", "diplomat")
+    assert params["mission_type"] == "gather_spores"
+    assert params["params"]["field_id"] == "loot-94de"
+    assert params["reward_energy"] == 0
+
+
+def test_feldloser_mit_bomben_belagert_das_erste_ziel() -> None:
+    """Ab 3 Bomben wird belagert; die Folge-capture spawnt der Server."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    st = _landweg_zustand(
+        bomben=3, ziele=[{"field_id": "ziel-052", "is_vulnerable": False}], loot_id="loot-94de"
+    )
+    params = resolve_action_params(st, "start_mission", "diplomat")
+    assert params["mission_type"] == "siege_field"
+    assert params["params"]["target_field_id"] == "ziel-052"
+
+
+def test_bomben_ohne_ziel_looten_weiter() -> None:
+    """3 Bomben, aber leere Zielliste: weiter sammeln statt ins Leere belagern."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    st = _landweg_zustand(bomben=5, ziele=[], loot_id="loot-94de")
+    params = resolve_action_params(st, "start_mission", "diplomat")
+    assert params["mission_type"] == "gather_spores"
+
+
+def test_ohne_landweg_fakten_bleibt_der_scout_fallback() -> None:
+    """Server < v1.64.143 (keine Fakten im State): der S306-Notfallweg hält."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    st = _feldloser_zustand(persona="diplomat", erreichbar=[_cube()], bauplaetze=[])
+    params = resolve_action_params(st, "start_mission", "diplomat")
+    assert params["mission_type"] == "scout_terminal"

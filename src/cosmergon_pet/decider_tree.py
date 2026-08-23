@@ -643,6 +643,43 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
     }
     mission_type = mission_by_persona.get(persona, "gather_spores")
 
+    # v2.2.0 (S307) — Eroberungs-Kette fuer Feldlose, VOR dem S306-Notfallweg:
+    # der Server nennt seit v1.64.143 Bomben-Bestand, reichstes Loot-Feld und
+    # Ziel-IDs direkt im State (`available_actions.start_mission/.claim_field`).
+    # Damit ist der Weg zurueck zu Besitz vollstaendig clientseitig planbar:
+    # Loot sammeln (gather braucht KEIN eigenes Feld — nur Existenz des Ziels)
+    # -> mega_bombs -> siege_field; die Folge-capture spawnt der SERVER selbst
+    # (S240/S242), der Client muss die Kette nicht weiterfuehren.
+    # Schwelle 3 Bomben: eine reisst ~12 Loecher (verwundbar ab >5), zwei
+    # Reserven gegen Heilung — Socket-still gelang die Kette mit 13, das
+    # Minimum soll nicht Perfektion verlangen.
+    if not _fields(state):
+        verfuegbar = getattr(state, "available_actions", None) or {}
+        sm_fakten = verfuegbar.get("start_mission") or {}
+        cf_fakten = verfuegbar.get("claim_field") or {}
+        bomben = int(sm_fakten.get("mega_bombs") or 0)
+        ziele = cf_fakten.get("targets") or []
+        loot = sm_fakten.get("richest_loot_field") or {}
+        if bomben >= 3 and ziele:
+            return {
+                "mission_type": "siege_field",
+                "params": {
+                    "target_field_id": str(ziele[0]["field_id"]),
+                    "deadline_ticks": 2000,
+                },
+                "reward_energy": 0,
+            }
+        if loot.get("field_id"):
+            return {
+                "mission_type": "gather_spores",
+                "params": {
+                    "field_id": str(loot["field_id"]),
+                    "max_items": 10,
+                    "duration_ticks": 200,
+                },
+                "reward_energy": 0,
+            }
+
     # S306 — Notfallweg vor Persona: wer KEIN Feld hat, klaert auf, egal welche
     # Persona er traegt. Alle anderen Missionsarten setzen eigenen Besitz
     # voraus (`gather_spores`/`patrol_field` brauchen ein Feld, das es nicht
@@ -650,6 +687,8 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
     # Aufklaerung ist dann kein Stil, sondern der einzige Weg zurueck: das
     # Terminal nennt verwundbare Ziele (`field_lookup`), und daraus wird eine
     # Eroberung. Besitz ist Existenzgrundlage, keine Geschmacksfrage.
+    # (Greift seit v2.2.0 nur noch, wenn der Server die Landweg-Fakten NICHT
+    # liefert — aeltere Server als v1.64.143.)
     if not _fields(state) and _reachable_cubes(state):
         mission_type = "scout_terminal"
 
