@@ -1,7 +1,22 @@
-"""TreeDecider v2.1.3 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.2.1 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.2.x changes (S307, am Live-Fall Socket-hand):
+  - v2.2.0: Eroberungs-Kette fuer Feldlose in ``_resolve_start_mission`` —
+    der Server (>= v1.64.143) nennt mega_bombs/richest_loot_field/Ziel-IDs
+    im State; gather braucht KEIN eigenes Feld, siege ab 3 Bomben, die
+    Folge-capture spawnt der Server.
+  - v2.2.1: die Kette ist auch ERREICHBAR. Socket-hand sass im
+    Subsistenz-Gefaengnis: Schwelle 20k > 10k Guthaben -> Subsistenz-Pool,
+    und dort war market_list der einzige gueltige Zug (place_cells braucht
+    ein Feld, create_field einen freien Slot) — das wochenlange
+    Markt-Karussell war eine POOL-Eigenschaft, kein LLM-Fehler.
+    start_mission gehoert in den Subsistenz-Pool (kostet 0 Energie, ist
+    neben create_field die einzige nachhaltige Income-Quelle), Score 0.9
+    fuer Feldlose vor dem delta-Guard (_predict_delta modelliert
+    Missionen nicht).
 
 v2.1.3 changes (S298, an der Live-Kadenz gemessen):
   - Vertrags-``duration`` 100 -> 1000 Ticks. 100 (~2,5 h) machte Pakte zu
@@ -906,6 +921,21 @@ def score_action(
     """Wie sehr reduziert die Action die Distanz zum Goal?
     Returns float in [0, 1]. Höher = besser."""
     delta = _predict_delta(state, action, params)
+
+    # v2.2.1 (S307): Feldlos ist die Eroberungs-Kette (start_mission ->
+    # gather/siege, Folge-capture spawnt der Server) neben create_field die
+    # einzige NACHHALTIGE Income-Quelle — market_list ist ein Einmal-Boost.
+    # Vor dem delta-Guard, weil _predict_delta Missionen nicht modelliert.
+    # 0.9 < 1.0 (create_field): existiert wirklich ein freier Slot, schlaegt
+    # Kaufen das Erobern; sonst ist create_field ohnehin invalid.
+    if (
+        action == "start_mission"
+        and params
+        and goal_metric.get("kind") == "energy_at_least"
+        and len(_fields(state)) == 0
+    ):
+        return 0.9
+
     if not delta:
         return 0.0
 
@@ -1060,7 +1090,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.1.3"
+    version: str = "2.2.1"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

@@ -570,3 +570,25 @@ def test_ohne_landweg_fakten_bleibt_der_scout_fallback() -> None:
     st = _feldloser_zustand(persona="diplomat", erreichbar=[_cube()], bauplaetze=[])
     params = resolve_action_params(st, "start_mission", "diplomat")
     assert params["mission_type"] == "scout_terminal"
+
+
+def test_socket_hand_repro_subsistenz_gefaengnis_ist_offen() -> None:
+    """Der echte Fall, END-TO-END durch decide(): Diplomat, 9.998 Energie
+    (unter der 20k-Schwelle -> Subsistenz-Pool), 0 Felder, Welt voll.
+
+    Vor v2.2.1 war market_list der einzige gueltige Zug des Pools — das
+    wochenlange Karussell. Jetzt gewinnt die Eroberungs-Kette (0.9 > jeder
+    market_list-Score), sobald der Server die Landweg-Fakten liefert."""
+    import asyncio
+
+    from cosmergon_pet.decider_tree import TreeDecider
+
+    st = _landweg_zustand(bomben=0, ziele=[], loot_id="loot-94de")
+    st.energy = 9_998.0
+    st.my_mission = None
+    st.pending_contracts = []
+
+    action, params = asyncio.run(TreeDecider().decide(st))
+    assert action == "start_mission"
+    assert params["mission_type"] == "gather_spores"
+    assert params["params"]["field_id"] == "loot-94de"

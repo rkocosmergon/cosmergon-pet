@@ -21,13 +21,25 @@ from typing import Any
 
 # --- Subsistenz-Layer --------------------------------------------------------
 
-SUBSISTENCE_POOL: tuple[str, ...] = ("place_cells", "market_list", "create_field")
+SUBSISTENCE_POOL: tuple[str, ...] = (
+    "place_cells",
+    "market_list",
+    "create_field",
+    # v2.2.1 (S307): der Weg zurueck zu Besitz IST Subsistenz. Ein feldloser
+    # Agent unter der Schwelle sass hier fest: place_cells braucht ein Feld,
+    # create_field einen freien Slot — market_list war der einzige gueltige
+    # Zug (Socket-hand-Karussell, 23.08.). Die Eroberungs-Kette (gather ->
+    # siege, resolve_action_params) kostet 0 Energie und ist neben
+    # create_field die einzige nachhaltige Income-Quelle.
+    "start_mission",
+)
 """Aktionen die Energy bringen können (universal, persona-unabhängig)."""
 
 SUBSISTENCE_BIAS: dict[str, float] = {
     "place_cells": 0.0,
     "market_list": 0.0,
     "create_field": 0.0,
+    "start_mission": 0.0,
 }
 """Im Subsistenz-Modus alle gleichberechtigt — Goal-Score entscheidet."""
 

@@ -6,6 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-08-23
+
+### Fixed
+
+- **The conquest chain is now reachable** (TreeDecider v2.2.1): a fieldless
+  agent below the subsistence threshold was locked into the subsistence pool,
+  where `market_list` was the only valid move (`place_cells` needs a field,
+  `create_field` a free slot) — weeks of market carousel were a pool property,
+  not a strategy. `start_mission` joins the subsistence pool (the chain costs
+  no energy and is, next to `create_field`, the only sustainable income
+  source); fieldless mission steps score 0.9 under `energy_at_least`.
+
 ## [0.8.0] — 2026-08-23
 
 ### Added
