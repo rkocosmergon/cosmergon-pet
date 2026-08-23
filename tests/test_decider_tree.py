@@ -240,9 +240,9 @@ def test_start_mission_ohne_selbstbelohnung_und_ohne_none_ids() -> None:
     from cosmergon_pet.decider_tree import is_valid, resolve_action_params
 
     mit_feld = _make_state(fields=[SimpleNamespace(id="33333333-3333-3333-3333-333333333333")])
-    params = resolve_action_params(mit_feld, "start_mission", "warrior")
-    assert params["reward_energy"] == 0
-    assert params["params"]["field_id"] == "33333333-3333-3333-3333-333333333333"
+    inner = _draht(resolve_action_params(mit_feld, "start_mission", "warrior"))
+    assert inner["reward_energy"] == 0
+    assert inner["params"]["field_id"] == "33333333-3333-3333-3333-333333333333"
 
     feldlos = _make_state(fields=[], cubes=[])
     assert resolve_action_params(feldlos, "start_mission", "warrior") == {}
@@ -450,6 +450,19 @@ def _feldloser_zustand(*, persona: str, erreichbar: list[Any], bauplaetze: list[
     return st
 
 
+def _draht(params: dict) -> dict:
+    """Die Draht-Form: act(**ergebnis) muss ActionRequest.params fuellen.
+
+    v2.2.2-Gegenprobe: die Tests hier pruefen seither den DRAHT-Vertrag
+    (params.mission_type), nicht die Client-Innenform — die flache Form
+    lief seit S306 still in 422, weil Pydantic Unbekanntes verwirft und
+    genau diese Tests die falsche Form gruen hielten."""
+    assert set(params.keys()) == {"params"}, f"nicht draht-konform: {sorted(params)}"
+    inner = params["params"]
+    assert inner.get("reward_energy") == 0
+    return inner
+
+
 def test_terminal_wird_ueber_erreichbare_cubes_gewaehlt() -> None:
     """Der heutige Ausfall: `universe_cubes` ist in voller Welt leer.
 
@@ -462,8 +475,9 @@ def test_terminal_wird_ueber_erreichbare_cubes_gewaehlt() -> None:
     st = _feldloser_zustand(persona="scientist", erreichbar=[_cube()], bauplaetze=[])
     params = resolve_action_params(st, "start_mission", "scientist")
     assert params, "keine Mission trotz erreichbarem Cube"
-    assert params["mission_type"] == "scout_terminal"
-    assert params["params"]["cube_id"] == "cube-c1"
+    inner = _draht(params)
+    assert inner["mission_type"] == "scout_terminal"
+    assert inner["params"]["cube_id"] == "cube-c1"
 
 
 def test_feldloser_klaert_auf_egal_welche_persona() -> None:
@@ -477,9 +491,8 @@ def test_feldloser_klaert_auf_egal_welche_persona() -> None:
     for persona in ("diplomat", "warrior", "trader", "farmer", "expansionist"):
         st = _feldloser_zustand(persona=persona, erreichbar=[_cube()], bauplaetze=[])
         params = resolve_action_params(st, "start_mission", persona)
-        assert params.get("mission_type") == "scout_terminal", (
-            f"{persona}: {params.get('mission_type')} statt Aufklärung"
-        )
+        typ = _draht(params)["mission_type"]
+        assert typ == "scout_terminal", f"{persona}: {typ} statt Aufklärung"
 
 
 def test_agent_mit_feld_behaelt_seine_persona_mission() -> None:
@@ -490,7 +503,7 @@ def test_agent_mit_feld_behaelt_seine_persona_mission() -> None:
     st = _make_state(persona="diplomat", fields=[feld], cubes=[])
     st.reachable_cubes = [_cube()]
     params = resolve_action_params(st, "start_mission", "diplomat")
-    assert params.get("mission_type") != "scout_terminal"
+    assert _draht(params)["mission_type"] != "scout_terminal"
 
 
 def test_ohne_erreichbaren_cube_keine_terminal_mission() -> None:
@@ -536,10 +549,9 @@ def test_feldloser_ohne_bomben_lootet_das_reichste_feld() -> None:
     from cosmergon_pet.decider_tree import resolve_action_params
 
     st = _landweg_zustand(bomben=0, ziele=[], loot_id="loot-94de")
-    params = resolve_action_params(st, "start_mission", "diplomat")
-    assert params["mission_type"] == "gather_spores"
-    assert params["params"]["field_id"] == "loot-94de"
-    assert params["reward_energy"] == 0
+    inner = _draht(resolve_action_params(st, "start_mission", "diplomat"))
+    assert inner["mission_type"] == "gather_spores"
+    assert inner["params"]["field_id"] == "loot-94de"
 
 
 def test_feldloser_mit_bomben_belagert_das_erste_ziel() -> None:
@@ -549,9 +561,9 @@ def test_feldloser_mit_bomben_belagert_das_erste_ziel() -> None:
     st = _landweg_zustand(
         bomben=3, ziele=[{"field_id": "ziel-052", "is_vulnerable": False}], loot_id="loot-94de"
     )
-    params = resolve_action_params(st, "start_mission", "diplomat")
-    assert params["mission_type"] == "siege_field"
-    assert params["params"]["target_field_id"] == "ziel-052"
+    inner = _draht(resolve_action_params(st, "start_mission", "diplomat"))
+    assert inner["mission_type"] == "siege_field"
+    assert inner["params"]["target_field_id"] == "ziel-052"
 
 
 def test_bomben_ohne_ziel_looten_weiter() -> None:
@@ -559,8 +571,8 @@ def test_bomben_ohne_ziel_looten_weiter() -> None:
     from cosmergon_pet.decider_tree import resolve_action_params
 
     st = _landweg_zustand(bomben=5, ziele=[], loot_id="loot-94de")
-    params = resolve_action_params(st, "start_mission", "diplomat")
-    assert params["mission_type"] == "gather_spores"
+    inner = _draht(resolve_action_params(st, "start_mission", "diplomat"))
+    assert inner["mission_type"] == "gather_spores"
 
 
 def test_ohne_landweg_fakten_bleibt_der_scout_fallback() -> None:
@@ -568,8 +580,8 @@ def test_ohne_landweg_fakten_bleibt_der_scout_fallback() -> None:
     from cosmergon_pet.decider_tree import resolve_action_params
 
     st = _feldloser_zustand(persona="diplomat", erreichbar=[_cube()], bauplaetze=[])
-    params = resolve_action_params(st, "start_mission", "diplomat")
-    assert params["mission_type"] == "scout_terminal"
+    inner = _draht(resolve_action_params(st, "start_mission", "diplomat"))
+    assert inner["mission_type"] == "scout_terminal"
 
 
 def test_socket_hand_repro_subsistenz_gefaengnis_ist_offen() -> None:
@@ -590,5 +602,6 @@ def test_socket_hand_repro_subsistenz_gefaengnis_ist_offen() -> None:
 
     action, params = asyncio.run(TreeDecider().decide(st))
     assert action == "start_mission"
-    assert params["mission_type"] == "gather_spores"
-    assert params["params"]["field_id"] == "loot-94de"
+    inner = _draht(params)
+    assert inner["mission_type"] == "gather_spores"
+    assert inner["params"]["field_id"] == "loot-94de"

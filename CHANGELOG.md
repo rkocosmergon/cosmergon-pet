@@ -6,6 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-08-23
+
+### Fixed
+
+- **start_mission never reached the wire correctly** (TreeDecider v2.2.2):
+  the resolver returned `mission_type`/`reward_energy` at the top level, but
+  the server's ActionRequest only knows `params` — Pydantic silently dropped
+  the unknown fields and every start_mission (including the 0.7.0 scout
+  fallback) died as 422 "mission_type required". Same error class as the
+  v2.1.2 propose_from_template fix. All mission payloads now travel inside
+  `params`; tests assert the wire contract, not the client-internal shape.
+
 ## [0.8.1] — 2026-08-23
 
 ### Fixed

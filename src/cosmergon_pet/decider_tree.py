@@ -638,6 +638,25 @@ def _resolve_propose_contract(state: GameState, persona: str) -> dict[str, Any]:
     }
 
 
+def _mission_payload(mission_type: str, mission_params: dict[str, Any]) -> dict[str, Any]:
+    """v2.2.2 — der Draht-Vertrag von start_mission, an EINER Stelle.
+
+    ActionRequest kennt mission_type/reward_energy NICHT als Top-Level-Felder;
+    Pydantic verwirft Unbekanntes STILL, der Handler liest alles aus
+    ``data.params`` — flach gebaute Payloads liefen deshalb IMMER in 422
+    "mission_type required" (auch der S306-scout-Fix hat so nie gefeuert;
+    die Tests pruefen seitdem die Draht-Form, nicht die Client-Form).
+    Gleiche Fehlerklasse wie v2.1.2 bei propose_from_template.
+    """
+    return {
+        "params": {
+            "mission_type": mission_type,
+            "params": mission_params,
+            "reward_energy": 0,
+        }
+    }
+
+
 def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
     """Persona-Affinity-Default — konzept-mission-system §3 + persona-Reform.
 
@@ -676,24 +695,15 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
         ziele = cf_fakten.get("targets") or []
         loot = sm_fakten.get("richest_loot_field") or {}
         if bomben >= 3 and ziele:
-            return {
-                "mission_type": "siege_field",
-                "params": {
-                    "target_field_id": str(ziele[0]["field_id"]),
-                    "deadline_ticks": 2000,
-                },
-                "reward_energy": 0,
-            }
+            return _mission_payload(
+                "siege_field",
+                {"target_field_id": str(ziele[0]["field_id"]), "deadline_ticks": 2000},
+            )
         if loot.get("field_id"):
-            return {
-                "mission_type": "gather_spores",
-                "params": {
-                    "field_id": str(loot["field_id"]),
-                    "max_items": 10,
-                    "duration_ticks": 200,
-                },
-                "reward_energy": 0,
-            }
+            return _mission_payload(
+                "gather_spores",
+                {"field_id": str(loot["field_id"]), "max_items": 10, "duration_ticks": 200},
+            )
 
     # S306 — Notfallweg vor Persona: wer KEIN Feld hat, klaert auf, egal welche
     # Persona er traegt. Alle anderen Missionsarten setzen eigenen Besitz
@@ -716,26 +726,17 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
         if not cubes:
             mission_type = "gather_spores"  # Fallback auf den Feld-Weg
         else:
-            return {
-                "mission_type": "scout_terminal",
-                "params": {
-                    "cube_id": str(cubes[0].id),
-                    "query_type": "wealth_estimate",
-                },
-                "reward_energy": 0,
-            }
+            return _mission_payload(
+                "scout_terminal",
+                {"cube_id": str(cubes[0].id), "query_type": "wealth_estimate"},
+            )
     fields = _fields(state)
     if not fields:
         return {}
-    return {
-        "mission_type": "gather_spores",
-        "params": {
-            "field_id": str(fields[0].id),
-            "max_items": 10,
-            "duration_ticks": 200,
-        },
-        "reward_energy": 0,
-    }
+    return _mission_payload(
+        "gather_spores",
+        {"field_id": str(fields[0].id), "max_items": 10, "duration_ticks": 200},
+    )
 
 
 def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, Any]:
@@ -1090,7 +1091,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.2.1"
+    version: str = "2.2.2"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
