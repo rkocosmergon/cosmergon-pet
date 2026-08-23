@@ -62,6 +62,14 @@ BACKOFF_ROUNDS = 30
 SOZIALE_AKTIONEN = frozenset({"propose_contract", "propose_from_template"})
 SOZIAL_KADENZ_ROUNDS = 30
 
+# v0.8.3 (S307): der Server fuehrt MAX 1 Mission je Marauder — nach einem
+# erfolgreichen start_mission ist jeder weitere Versuch ein garantierter 422,
+# bis die Mission endet. Der marauder_state-Waechter im Decider greift erst,
+# wenn der Server den Zustand dreht (pending-Fenster ~Minuten) — die Kadenz
+# ueberbrueckt genau dieses Fenster. Live erlebt 23.08.: Erfolg 18:19, danach
+# 3x 422 binnen 3 Minuten -> Backoff haette die Kette 30 Runden gesperrt.
+MISSION_KADENZ_ROUNDS = 10
+
 
 class _Backoff:
     """Sperrt Aktionen nach wiederholten Fehlschlaegen fuer einige Runden —
@@ -82,6 +90,12 @@ class _Backoff:
         if success:
             self._fails.pop(action, None)
             self._blocked_until_round.pop(action, None)
+            if action == "start_mission":
+                self._blocked_until_round[action] = self._round + MISSION_KADENZ_ROUNDS
+                logger.info(
+                    "missions-kadenz: Mission laeuft — start_mission fuer %d Runden pausiert",
+                    MISSION_KADENZ_ROUNDS,
+                )
             if action in SOZIALE_AKTIONEN:
                 bis = self._round + SOZIAL_KADENZ_ROUNDS
                 for a in SOZIALE_AKTIONEN:

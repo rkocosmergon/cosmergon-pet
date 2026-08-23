@@ -6,6 +6,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-08-23
+
+### Fixed
+
+- **One mission at a time, respected client-side**: after a successful
+  `start_mission` the loop pauses further starts (server enforces max 1;
+  retries were guaranteed 422s that fed the failure backoff right when the
+  chain was working). The decider's old `my_mission`/`marauder_state` guards
+  were dead code — the SDK GameState never carried those fields; the guard
+  now reads the server truth from `available_actions.start_mission.marauder_state`.
+
 ## [0.8.2] — 2026-08-23
 
 ### Fixed

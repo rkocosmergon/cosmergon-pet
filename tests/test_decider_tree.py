@@ -605,3 +605,16 @@ def test_socket_hand_repro_subsistenz_gefaengnis_ist_offen() -> None:
     inner = _draht(params)
     assert inner["mission_type"] == "gather_spores"
     assert inner["params"]["field_id"] == "loot-94de"
+
+
+def test_laufende_mission_sperrt_start_mission_serverseitig() -> None:
+    """v2.2.3: der Server nennt marauder_state in den Fakten — nicht recovery
+    heisst: Mission laeuft/Koerper unterwegs, jeder Start waere 422."""
+    from cosmergon_pet.decider_tree import is_valid
+
+    st = _landweg_zustand(bomben=0, ziele=[], loot_id="loot-94de")
+    st.available_actions["start_mission"]["marauder_state"] = "mission"
+    assert is_valid(st, "start_mission") is False
+
+    st.available_actions["start_mission"]["marauder_state"] = "recovery"
+    assert is_valid(st, "start_mission") is True

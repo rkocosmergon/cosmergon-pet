@@ -215,3 +215,16 @@ def _main() -> int:
 
 if __name__ == "__main__":
     sys.exit(_main())
+
+
+def test_missions_kadenz_nach_erfolg() -> None:
+    """v0.8.3: erfolgreicher start_mission pausiert weitere Starts (max 1
+    Mission serverseitig; das pending-Fenster kennt der Decider nicht)."""
+    from cosmergon_pet.tree_loop import MISSION_KADENZ_ROUNDS, _Backoff
+
+    b = _Backoff()
+    b.melde("start_mission", True)
+    assert "start_mission" in b.blocked()
+    for _ in range(MISSION_KADENZ_ROUNDS):
+        b.naechste_runde()
+    assert "start_mission" not in b.blocked()

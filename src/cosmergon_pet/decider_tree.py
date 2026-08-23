@@ -333,8 +333,14 @@ def _start_mission_moeglich(state: GameState) -> bool:
     """Marauder in recovery, keine aktive Mission, Params FUELLBAR (v2.1.0:
     echte UUIDs — ein feldloser Agent in voller Welt hat keinen Kandidaten,
     und ein {}-Versuch wäre ein garantierter 422)."""
-    marauder_state = getattr(state, "marauder_state", None) or "recovery"
-    if marauder_state != "recovery":
+    # v2.2.3 (S307): getattr(state, "marauder_state"/"my_mission") war TOTER
+    # Code — das SDK-GameState traegt beide Felder nicht, die Guards liefen
+    # immer ins Default. Die SERVER-Wahrheit steht seit v1.64.143 in
+    # available_actions.start_mission.marauder_state; None heisst "Server
+    # nennt sie nicht" (aelter) und bleibt durchlaessig wie bisher.
+    fakten = (getattr(state, "available_actions", None) or {}).get("start_mission") or {}
+    server_zustand = fakten.get("marauder_state")
+    if server_zustand is not None and server_zustand != "recovery":
         return False
     if getattr(state, "my_mission", None) is not None:
         return False
@@ -1091,7 +1097,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.2.2"
+    version: str = "2.2.3"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
