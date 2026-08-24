@@ -44,12 +44,14 @@ Documentation = "https://github.com/rkocosmergon/cosmergon-pet#readme"
 where = ["src"]
 
 [tool.pytest.ini_options]
-# S308 — Coverage-Schranke. Die Zahl steht HIER und nirgends sonst; die Regel
-# dazu in cos20 `pflichtenheft-sdk.md` §7.3a: Schranke = gemessener Ist-Stand,
-# darf nur STEIGEN. 54 ist der am 24.08.2026 gemessene Wert (2.096 Statements,
-# 964 ungedeckt, 126 Tests) — bewusst kein Wunschwert: ein Gate, das nie gruen
-# wird, wird abgeschaltet und schuetzt dann gar nichts (frost-sweep-Lehre,
-# docker_gc S305). Wer sie senkt, begruendet es im selben Commit.
+# Coverage-Schranke. Die Zahl steht HIER und nirgends sonst — eine Schranke, die
+# in mehreren Dokumenten gepflegt wird, driftet garantiert auseinander.
+#
+# 54 ist der am 2026-08-24 GEMESSENE Ist-Stand (2.096 Statements, 964 ungedeckt,
+# 126 Tests), bewusst kein Wunschwert. Eine Schranke, die der Code nie erreicht,
+# ist dauerrot — und was dauerrot ist, wird abgeschaltet und schuetzt danach gar
+# nichts mehr. Regel: die Schranke darf nur STEIGEN; wer sie senkt, begruendet es
+# im selben Commit.
 addopts = "--cov=src/cosmergon_pet --cov-report=term-missing --cov-fail-under=54"
 
 [tool.ruff]

@@ -28,10 +28,10 @@ jobs:
       # Hardware-Tests skippen sich ohne Display selbst — gleicher Lauf wie
       # lokal auf iMac/Laptop. `pip install -e .` wuerde auf ubuntu-latest an
       # den GPIO-Paketen haengen, ohne einen Test mehr zu fahren.
-      # S308: die SDK-Untergrenze war auf >=0.12.0 stehengeblieben, waehrend
-      # pyproject.toml >=0.19.0 verlangt — die CI testete also gegen eine
-      # Version, die das Paket gar nicht unterstuetzt. Jetzt aus derselben
-      # Quelle wie die Paket-Anforderung.
+      # Die SDK-Untergrenze hier MUSS zu der in pyproject.toml passen. Sie stand
+      # auf >=0.12.0, waehrend das Paket >=0.19.0 verlangt — die Tests liefen
+      # also gegen eine Version, die das Paket gar nicht unterstuetzt, und ein
+      # gruener Lauf sagte weniger, als er zu sagen schien.
       - name: Install test deps
         run: pip install "cosmergon-agent>=0.19.0" "pillow>=10.0.0" pytest pytest-asyncio pytest-cov
 
