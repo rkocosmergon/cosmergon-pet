@@ -681,3 +681,111 @@ def test_laufende_mission_sperrt_start_mission_serverseitig() -> None:
 
     st.available_actions["start_mission"]["marauder_state"] = "recovery"
     assert is_valid(st, "start_mission") is True
+
+
+# --- v2.3.1 Kaufabsicht (S308, Live-Fall Socket-hand) ------------------------
+
+
+def _preset_listing(price: float = 10.0) -> Any:
+    return SimpleNamespace(listing_id="p1", item_type="preset", price_energy=price)
+
+
+def _bomben_listing(price: float = 900.0) -> Any:
+    return SimpleNamespace(listing_id="b1", item_type="mega_bomb", price_energy=price)
+
+
+def test_voller_vorrat_kein_kauf_karussell_repro() -> None:
+    """Der Socket-hand-Repro: diplomat, eigenes Feld, VOLLE Saat-Kammer,
+    billiges Haus-Preset — gegen v2.3.0 war das ein garantierter Kauf
+    (203 in 24 h). Mit Server-Faktum preset_stock >= 3 endet der Treadmill."""
+    from cosmergon_pet.decider_tree import is_valid, resolve_action_params
+
+    state = _make_state(
+        persona="diplomat",
+        fields=[SimpleNamespace(id="f1", entity_tier=1)],
+        available_actions={"market_buy": {"preset_stock": 5}},
+    )
+    state.world_briefing.market.buyable = [_preset_listing()]
+    assert is_valid(state, "market_buy") is False
+    assert resolve_action_params(state, "market_buy", "diplomat") == {}
+
+
+def test_leere_kammer_kauft_preset_nach() -> None:
+    from cosmergon_pet.decider_tree import is_valid, resolve_action_params
+
+    state = _make_state(
+        persona="diplomat",
+        fields=[SimpleNamespace(id="f1", entity_tier=1)],
+        available_actions={"market_buy": {"preset_stock": 0}},
+    )
+    state.world_briefing.market.buyable = [_preset_listing()]
+    assert is_valid(state, "market_buy") is True
+    assert resolve_action_params(state, "market_buy", "diplomat")["listing_id"] == "p1"
+
+
+def test_feldloser_mit_zielen_kauft_bomben() -> None:
+    """Die Absicht ersetzt den statischen Typ-Filter: ein feldloser diplomat
+    DARF die mega_bomb kaufen, wenn die Eroberungs-Kette sie braucht
+    (Ziele sichtbar, Arsenal < 3) — der Kauf beschleunigt das Sammeln."""
+    from cosmergon_pet.decider_tree import is_valid, resolve_action_params
+
+    state = _make_state(
+        persona="diplomat",
+        energy=50_000,
+        available_actions={
+            "market_buy": {"preset_stock": 0},
+            "start_mission": {"mega_bombs": 1},
+            "claim_field": {"targets": [{"field_id": "z1"}]},
+        },
+    )
+    state.world_briefing.market.buyable = [_bomben_listing()]
+    assert is_valid(state, "market_buy") is True
+    assert resolve_action_params(state, "market_buy", "diplomat")["listing_id"] == "b1"
+
+
+def test_volles_arsenal_kauft_keine_bomben() -> None:
+    from cosmergon_pet.decider_tree import is_valid
+
+    state = _make_state(
+        persona="diplomat",
+        energy=50_000,
+        available_actions={
+            "market_buy": {"preset_stock": 0},
+            "start_mission": {"mega_bombs": 3},
+            "claim_field": {"targets": [{"field_id": "z1"}]},
+        },
+    )
+    state.world_briefing.market.buyable = [_bomben_listing()]
+    # Feldlos ohne eigenes Feld: preset-Absicht entfaellt (kein Feld),
+    # Bomben-Absicht entfaellt (Arsenal voll) -> kein Kauf.
+    assert is_valid(state, "market_buy") is False
+
+
+def test_ohne_server_faktum_bleibt_legacy_verhalten() -> None:
+    """Aelterer Server (kein market_buy.preset_stock): der Legacy-Typ-Filter
+    traegt weiter — diplomat darf preset kaufen wie in v2.3.0 (durchlaessig,
+    Muster marauder_state)."""
+    from cosmergon_pet.decider_tree import is_valid
+
+    state = _make_state(
+        persona="diplomat",
+        fields=[SimpleNamespace(id="f1", entity_tier=1)],
+        available_actions={},
+    )
+    state.world_briefing.market.buyable = [_preset_listing()]
+    assert is_valid(state, "market_buy") is True
+
+
+def test_delta_folgt_demselben_kern() -> None:
+    """Gate an einem von zwei Eingaengen ist keines: auch der Score-Delta
+    sieht bei voller Kammer KEINEN Kauf (kein Geister-Delta fuer eine
+    Aktion, die der Resolver verweigert)."""
+    from cosmergon_pet.decider_tree import _predict_delta
+
+    state = _make_state(
+        persona="diplomat",
+        fields=[SimpleNamespace(id="f1", entity_tier=1)],
+        available_actions={"market_buy": {"preset_stock": 5}},
+    )
+    state.world_briefing.market.buyable = [_preset_listing()]
+    assert _predict_delta(state, "market_buy", {}) == {}

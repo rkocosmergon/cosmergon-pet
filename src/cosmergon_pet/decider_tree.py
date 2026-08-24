@@ -1,7 +1,18 @@
-"""TreeDecider v2.2.1 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.1 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.3.1 changes (S308, am Live-Fall Socket-hand):
+  - Kaufabsicht statt Blindkauf (Server-P3b-Analog): market_buy entsteht
+    NUR noch aus einer Absicht — preset-Nachschub (Feld vorhanden,
+    ``market_buy.preset_stock`` < 3, Server >= v1.65.4) oder mega_bomb
+    fuer die Feldlos-Kette (Ziele sichtbar, Arsenal < 3). EIN Kern
+    (``_gewolltes_buyable``) fuer is_valid, Resolver und Delta — ein Gate
+    an einem von zwei Eingaengen ist keines. Ohne Server-Faktum (aelter
+    als v1.65.4) bleibt der Legacy-Typ-Filter durchlaessig wie bisher.
+    Anlass: Socket-hand (diplomat) kaufte 203 Haus-Presets in 24 h — der
+    Baum begruendete jeden Kauf mit dem billigsten erlaubten Listing.
 
 v2.2.x changes (S307, am Live-Fall Socket-hand):
   - v2.2.0: Eroberungs-Kette fuer Feldlose in ``_resolve_start_mission`` —
@@ -309,24 +320,9 @@ def _evolve_moeglich(state: GameState) -> bool:
 
 
 def _market_buy_moeglich(state: GameState) -> bool:
-    """Gibt es ein persona-erlaubtes, bezahlbares Listing?"""
+    """Gibt es einen Kauf MIT Absicht (v2.3.1 — ohne Absicht keinen)?"""
     persona = (getattr(state, "persona_type", None) or "scientist").lower()
-    allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
-    energy = _energy(state)
-    for b in _market_buyable(state):
-        if allowed is not None:
-            item_type = getattr(b, "item_type", None)
-            if item_type not in allowed:
-                continue
-        price = getattr(b, "price_energy", None)
-        if price is None:
-            continue
-        try:
-            if float(price) <= energy:
-                return True
-        except (TypeError, ValueError):
-            continue
-    return False
+    return _gewolltes_buyable(state, persona) is not None
 
 
 def _start_mission_moeglich(state: GameState) -> bool:
@@ -567,6 +563,67 @@ def _cheapest_buyable(state: GameState, persona: str) -> Any | None:
     return candidates[0][1]
 
 
+def _kauf_absichten(state: GameState) -> tuple[str, ...] | None:
+    """v2.3.1 (S308) — Kaufabsicht statt Blindkauf (Server-P3b-Analog).
+
+    ``None`` heisst: der Server nennt ``market_buy.preset_stock`` nicht
+    (aelter als v1.65.4) — der Aufrufer faellt auf den Legacy-Typ-Filter
+    zurueck (Durchlaessigkeits-Muster wie ``marauder_state``). Anlass:
+    Socket-hand (diplomat) kaufte 203 Haus-Presets in 24 h, weil der Baum
+    jeden Kauf mit dem billigsten erlaubten Listing begruendete — ein
+    Vorrats-Gate war clientseitig strukturell unmoeglich (der State trug
+    kein Inventar).
+    """
+    verfuegbar = getattr(state, "available_actions", None) or {}
+    stock = (verfuegbar.get("market_buy") or {}).get("preset_stock")
+    if stock is None:
+        return None
+    wuensche: list[str] = []
+    # Saat-Nachschub: eigenes Feld vorhanden und Vorrat < 3 (Server-P3b-Grenze,
+    # utility_selector._preset_absicht — dieselbe Zahl, dieselbe Bedeutung).
+    if _fields(state) and int(stock) < 3:
+        wuensche.append("preset")
+    # Bomben fuer die Feldlos-Kette: Ziele sichtbar und Arsenal < 3 (dieselbe
+    # Schwelle wie _feldlos_eroberungs_zug: siege ab 3) — der Kauf ist der
+    # Beschleuniger des Sammelns, nicht sein Ersatz.
+    sm_fakten = verfuegbar.get("start_mission") or {}
+    ziele = (verfuegbar.get("claim_field") or {}).get("targets") or []
+    if not _fields(state) and ziele and int(sm_fakten.get("mega_bombs") or 0) < 3:
+        wuensche.append("mega_bomb")
+    return tuple(wuensche)
+
+
+def _gewolltes_buyable(state: GameState, persona: str) -> Any | None:
+    """Der EINE Kauf-Kern fuer alle drei Eingaenge (is_valid, Resolver,
+    Delta) — ein Gate an einem von zwei Eingaengen ist keines.
+
+    v2.3.1: die Absicht ERSETZT den statischen PERSONA_BUYABLE_TYPES-Filter,
+    dessen Anti-Hoarding-Ziel sie schaerfer erfuellt (kaufe nur, was du JETZT
+    brauchst); der Filter wirkt nur noch im Legacy-Zweig fuer aeltere Server.
+    """
+    absichten = _kauf_absichten(state)
+    if absichten is None:
+        return _cheapest_buyable(state, persona)
+    if not absichten:
+        return None
+    energy = _energy(state)
+    candidates = []
+    for b in _market_buyable(state):
+        if getattr(b, "item_type", None) not in absichten:
+            continue
+        try:
+            price_f = float(getattr(b, "price_energy", None))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if price_f > energy:
+            continue
+        candidates.append((price_f, b))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p[0])
+    return candidates[0][1]
+
+
 def resolve_action_params(state: GameState, action: str, persona: str) -> dict[str, Any]:
     """Best-effort Parameter-Auswahl für die gewählte Action."""
     if action == "create_field":
@@ -585,7 +642,7 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
         return {"field_id": str(f.id)} if f else {}
 
     if action == "market_buy":
-        b = _cheapest_buyable(state, persona)
+        b = _gewolltes_buyable(state, persona)
         return {"listing_id": str(b.listing_id)} if b else {}
 
     if action == "market_list":
@@ -838,8 +895,8 @@ def _delta_place_cells(params: dict[str, Any], n_fields: int) -> dict[str, float
 
 
 def _delta_market_buy(state: GameState) -> dict[str, float]:
-    """Delta des billigsten persona-erlaubten Kaufs."""
-    b = _cheapest_buyable(state, (getattr(state, "persona_type", None) or "scientist").lower())
+    """Delta des Kaufs mit Absicht (v2.3.1 — derselbe Kern wie is_valid/Resolver)."""
+    b = _gewolltes_buyable(state, (getattr(state, "persona_type", None) or "scientist").lower())
     if b is None:
         return {}
     price = getattr(b, "price_energy", 0) or 0

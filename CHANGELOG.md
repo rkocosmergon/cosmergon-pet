@@ -6,6 +6,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.6] — 2026-08-24
+
+### Fixed
+
+- Purchase intent instead of blind buying (vendored TreeDecider v2.3.1):
+  `market_buy` now only fires with an actual need — preset restock (own
+  field present, server-reported `market_buy.preset_stock` < 3, requires
+  server >= v1.65.4) or a mega_bomb for the fieldless conquest chain
+  (targets visible, arsenal < 3). One core (`_gewolltes_buyable`) feeds
+  validity check, param resolver and score delta alike. Against older
+  servers that don't report the stock fact, the previous type-filter
+  behavior is kept unchanged. Fixes the market carousel where a pet
+  bought 203 house presets in 24 h with a full seed chamber.
+
+## [0.8.5] — 2026-08-24
+
+### Fixed
+
+- (Entry added retroactively with 0.8.6 — release shipped without it.)
+  Fieldless special-case decoupled from subsistence (vendored TreeDecider
+  v2.3.0): the fieldless branch now triggers on `not is_valid(state,
+  "create_field")` instead of riding on the subsistence pool, so a solvent
+  fieldless pet enters the conquest chain (gather -> bombs -> siege)
+  immediately.
+
 ## [0.8.4] — 2026-08-23
 
 ### Changed
