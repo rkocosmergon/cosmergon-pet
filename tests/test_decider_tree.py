@@ -25,6 +25,7 @@ def _make_state(
     fields: list[Any] | None = None,
     cubes: list[Any] | None = None,
     available_actions: dict[str, dict[str, Any]] | None = None,
+    compass: str | None = None,
 ) -> Any:
     """Lightweight GameState surrogate — duck-typed for the tree's getattr-paths."""
     return SimpleNamespace(
@@ -37,8 +38,70 @@ def _make_state(
             market=SimpleNamespace(buyable=[]),
             contract_targets=[],
         ),
-        compass_preset=None,
+        compass_preset=compass,
     )
+
+
+def _fieldless_solvent_facts(**overrides: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Real server facts of a fieldless-but-solvent agent (v2.3.0 case):
+    marauder in recovery, no bombs yet, richest loot field known,
+    market_list available — and no free build slot."""
+    facts: dict[str, dict[str, Any]] = {
+        "start_mission": {
+            "available": True,
+            "marauder_state": "recovery",
+            "mega_bombs": 0,
+            "richest_loot_field": {
+                "field_id": "a7cb9d65-b959-48bc-a2f6-76b073f57dc8",
+                "bomb_boxes": 14,
+            },
+        },
+        "market_list": {
+            "available": True,
+            "sellable_energy": 365.95,
+            "sellable_items": {},
+        },
+        "create_field": {"can_afford": True, "next_cost": 500.0, "available": False},
+    }
+    facts.update(overrides)
+    return facts
+
+
+@pytest.mark.asyncio
+async def test_solvent_fieldless_agent_takes_the_conquest_chain() -> None:
+    """v2.3.0 regression (red vs v2.2.3): the 0.9 fieldless special-case was
+    coupled to the subsistence goal (``energy_at_least``). A SOLVENT fieldless
+    agent (goal ``field_count_at_least``) got 0.0 for start_mission and lost
+    0.20:0.15 to market_list under the explore compass — listing every minute
+    instead of returning to the game. Fieldless + server facts must win."""
+    state = _make_state(
+        energy=11_449,
+        fields=[],
+        cubes=[],  # full world: no build slot
+        available_actions=_fieldless_solvent_facts(),
+        compass="explore",
+    )
+    action, params = await TreeDecider().decide(state)
+    assert action == "start_mission"
+    assert params["params"]["mission_type"] == "gather_spores"
+
+
+@pytest.mark.asyncio
+async def test_free_slot_beats_conquest_despite_chain_facts() -> None:
+    """Guard for the v2.2.1 ordering (0.9 < create_field): with a free and
+    affordable build slot the fieldless special-case stays silent structurally
+    — create_field wins even though the full conquest facts are present."""
+    cube = SimpleNamespace(id="11111111-1111-1111-1111-111111111111")
+    state = _make_state(
+        energy=11_449,
+        fields=[],
+        cubes=[cube],  # free build slot
+        available_actions=_fieldless_solvent_facts(),
+        compass="explore",
+    )
+    action, params = await TreeDecider().decide(state)
+    assert action == "create_field"
+    assert params["cube_id"] == str(cube.id)
 
 
 @pytest.mark.asyncio

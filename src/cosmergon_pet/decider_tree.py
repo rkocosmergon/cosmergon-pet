@@ -941,14 +941,32 @@ def _feldloser_missions_zug(
     """v2.2.1 (S307): Feldlos ist die Eroberungs-Kette neben create_field die
     einzige NACHHALTIGE Income-Quelle — market_list ist ein Einmal-Boost.
     Eigenes Praedikat, weil _predict_delta Missionen nicht modelliert (der
-    Sonderfall muss VOR dem delta-Guard greifen) — und weil die Bedingung
-    die Situations-Gatter traegt: feldlos + fuellbare Params + Energie-Ziel.
+    Sonderfall muss VOR dem delta-Guard greifen).
+
+    v2.3.0 (S308): die Bedingung ``kind == "energy_at_least"`` ist RAUS. Sie
+    koppelte den Sonderfall an die Subsistenz-Lage — gebaut am Fall Socket-hand
+    (Diplomat, Schwelle 20k, permanent Subsistenz). Ein SOLVENTER Feldloser
+    (Comet-hand: scientist, Schwelle 2.000, Guthaben 11.449, decay-frei unterm
+    Floor) erreicht Subsistenz nie, sein Ziel ist ``field_count_at_least`` —
+    der Sonderfall griff nicht, start_mission bekam 0.0 und verlor die
+    Abstimmung 0.20:0.15 gegen market_list. Ergebnis: minütliches Listing statt
+    Rueckkehr ins Spiel. Die S306-Founder-Direktive ist feldlos-basiert („wer
+    KEIN Feld hat, klaert auf, egal welche Persona — Besitz ist
+    Existenzgrundlage"), nicht subsistenz-basiert.
+
+    Die Founder-Ordnung „freier Slot schlaegt Erobern" (S307: 0.9 <
+    create_field) steht dafuer jetzt STRUKTURELL hier: ist ``create_field``
+    gueltig (Slot frei + bezahlbar), schweigt der Sonderfall — der
+    create_field-Pfad gewinnt dann ohne Wettrennen der Persona-Biases. Als
+    Score-Duell waere die Ordnung persona-abhaengig gekippt (scientist:
+    create_field-Bias −0.2 gegen start_mission +0.15 haette Erobern ueber den
+    freien Slot gestellt).
     """
     return (
         action == "start_mission"
         and bool(params)
-        and goal_metric.get("kind") == "energy_at_least"
         and len(_fields(state)) == 0
+        and not is_valid(state, "create_field")
     )
 
 
@@ -1114,7 +1132,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.2.3"
+    version: str = "2.3.0"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
