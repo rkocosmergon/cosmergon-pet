@@ -6,6 +6,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.7] — 2026-08-26
+
+### Fixed
+
+- **Decision loops no longer run on a frozen world picture.**
+  `StateSource.current()` refreshed the state only when it was `None`, so a
+  loop without an external poller decided forever on its very first fetch.
+  Measured on a live agent: 19 hours on a 19-hour-old state — it besieged the
+  same field 88 times, having *captured that field itself* 13 minutes after
+  the first (correct) siege. Its world picture never learned that the target
+  had become its own.
+  `StateSource` now takes `max_age_s` and re-fetches a state that has been
+  lying around unchanged for longer than that. The threshold is not a chosen
+  number: `tree_decision_loop` and `llm_decision_loop` pass their own
+  `interval_s` — a state older than one decision interval is stale for the
+  next decision.
+  **Nothing changes inside the Pet:** its display poller stores a *new*
+  `GameState` object each round, and every new object resets the clock; the
+  staleness check compares identity, not content. A failed refresh (rate
+  limit, transient 5xx) keeps the old state rather than idling the loop, and
+  deliberately does not reset the clock, so the next round tries again.
+
 ## [0.8.6] — 2026-08-24
 
 ### Fixed

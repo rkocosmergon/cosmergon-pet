@@ -228,7 +228,12 @@ async def tree_decision_loop(
     backoff = _Backoff()
     # One instance for the whole loop: the counter inside decides when a
     # missing state stops being a hiccup and becomes worth a warning.
-    state_source = StateSource()
+    # `max_age_s` ist NICHT gesetzt, sondern hergeleitet: ein Zustand, der
+    # aelter ist als ein Entscheidungs-Intervall, ist fuer die naechste
+    # Entscheidung veraltet. Ohne ihn entscheidet ein Loop ohne fremden Poller
+    # ewig auf dem ersten Abruf (S310: 88 Belagerungen auf ein Feld, das dem
+    # Agenten seit der ersten laengst selbst gehoerte).
+    state_source = StateSource(max_age_s=interval_s)
     logger.info(
         "tree_decision_loop started decider=%s interval=%.1fs",
         getattr(decider, "name", "tree"),

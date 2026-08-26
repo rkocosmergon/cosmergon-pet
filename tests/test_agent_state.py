@@ -132,3 +132,103 @@ async def test_first_empty_round_stays_quiet(caplog):
         await StateSource().current(agent)
 
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+# --- Alterung (S310) --------------------------------------------------------
+#
+# Der zweite Halbsatz des S306-Fehlerbilds: nicht "niemand holt ihn je", sondern
+# "niemand holt ihn je WIEDER". Gemessen an Comet-hand — 19 h auf dem Zustand
+# des ersten Abrufs, 88 Belagerungen auf ein Feld, das ihm laengst selbst
+# gehoerte. Siehe Modul-Docstring.
+#
+# Die Tests brauchen keine gefaelschte Uhr: `max_age_s=0` heisst "kein Zustand
+# zweimal", `max_age_s=3600` heisst "in diesem Test nie veraltet". Beides ist
+# mit der echten `time.monotonic` deterministisch — und eine gepatchte
+# stdlib-Uhr wuerde dem Event-Loop unter den Fuessen wegziehen.
+
+
+class _AgentMitSlot(_Agent):
+    """Wie der echte SDK-Agent: ``refresh_state()`` legt den Zustand auch ab."""
+
+    async def refresh_state(self):
+        frisch = await super().refresh_state()
+        if frisch is not None:
+            self.state = frisch
+        return frisch
+
+
+@pytest.mark.asyncio
+async def test_stale_state_is_refetched():
+    """DER Kernfall: ein liegengebliebener Zustand wird ersetzt, nicht wiederverwendet.
+
+    Gegen den Code vor S310 schlaegt das fehl — dort holte ``current()`` nur bei
+    ``None`` nach, ein einmal gefuellter Zustand blieb fuer immer stehen.
+    """
+    agent = _AgentMitSlot(state="von gestern", fetched="frisch")
+    source = StateSource(max_age_s=0)
+
+    assert await source.current(agent) == "von gestern", "erste Runde nimmt das Vorhandene"
+    assert agent.refresh_calls == 0
+
+    assert await source.current(agent) == "frisch", "zweite Runde muss nachholen"
+    assert agent.refresh_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_external_poller_keeps_the_clock_reset():
+    """Im Pet aendert sich nichts: der Display-Loop legt jede Runde ein NEUES Objekt ab.
+
+    Waechter gegen Ueberkorrektur — wer hier faelschlich nachholt, baut den
+    zweiten Poller, den dieses Modul ausdruecklich nicht sein will.
+    """
+    agent = _AgentMitSlot(state="runde-0", fetched="unerwuenscht")
+    source = StateSource(max_age_s=0)
+
+    for runde in range(5):
+        # Neues Objekt (nicht nur gleicher Inhalt) — wie `GameState.from_api`.
+        agent.state = f"runde-{runde}"
+        assert await source.current(agent) == f"runde-{runde}"
+
+    assert agent.refresh_calls == 0, "fremder Poller haelt frisch, kein Nachholen noetig"
+
+
+@pytest.mark.asyncio
+async def test_young_state_is_not_refetched():
+    """Innerhalb des Hoechstalters bleibt es beim Vorhandenen — keine Zusatzlast."""
+    agent = _AgentMitSlot(state="jung", fetched="unerwuenscht")
+    source = StateSource(max_age_s=3600)
+
+    for _ in range(5):
+        assert await source.current(agent) == "jung"
+
+    assert agent.refresh_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_without_max_age_behaviour_is_unchanged():
+    """``max_age_s=None`` ist der Stand vor S310 — fuer Aufrufer mit eigenem Poller."""
+    agent = _AgentMitSlot(state="bleibt", fetched="unerwuenscht")
+    source = StateSource()
+
+    for _ in range(5):
+        assert await source.current(agent) == "bleibt"
+
+    assert agent.refresh_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_keeps_the_old_state_and_retries():
+    """Rate-Limit: lieber alt weiterarbeiten als gar nicht — aber es erneut versuchen.
+
+    Comet-hand kassiert jede zweite Anfrage ein 429. Wuerde ein Fehlschlag die
+    Uhr zuruecksetzen, wartete der naechste Versuch ein volles Intervall auf
+    einen Zustand, der schon veraltet ist.
+    """
+    agent = _AgentMitSlot(state="alt", raises=True)
+    source = StateSource(max_age_s=0)
+
+    assert await source.current(agent) == "alt"
+    assert await source.current(agent) == "alt", "Fehlschlag darf den Loop nicht leerlaufen lassen"
+    assert await source.current(agent) == "alt"
+
+    assert agent.refresh_calls == 2, "jede Runde nach dem Veralten ein neuer Versuch"

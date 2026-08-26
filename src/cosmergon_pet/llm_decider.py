@@ -416,7 +416,11 @@ async def llm_decision_loop(
     stop = stop or asyncio.Event()
     # One instance for the whole loop — its counter decides when a missing
     # state stops being a hiccup and becomes worth a warning (S306).
-    state_source = StateSource()
+    # `max_age_s` hergeleitet aus dem eigenen Intervall (S310, siehe
+    # `agent_state`): ein Zustand, der aelter ist als eine Entscheidung,
+    # ist fuer die naechste veraltet. Der LLM-Pfad ist gleich betroffen —
+    # er liest denselben `agent.state`.
+    state_source = StateSource(max_age_s=interval_s)
     logger.info(
         "llm_decision_loop started provider=%s model=%s interval=%.1fs",
         provider.name,

@@ -31,11 +31,45 @@ The loops now ask for what they need instead of assuming someone else supplied
 it, and a persistent absence becomes audible rather than silent. Inside the Pet
 nothing changes: ``agent.state`` is already populated, so no extra request is
 made — the fetch is a fallback, not a second poller.
+
+🔴 THE SECOND HALF OF THAT FLAW (2026-08-26, S310)
+--------------------------------------------------
+The paragraph above was true and incomplete, and the gap cost 19 hours of a
+live agent's behaviour. ``current()`` refreshed **only when the state was
+``None``** — so it fixed *"nobody ever fetched it"* and left *"nobody ever
+fetches it again"* wide open. Once ``agent.state`` was populated a single time,
+it was never replaced.
+
+Measured on Comet-hand (Mac Mini, ``decider-runner.py`` — the decision loop
+**without** the Pet's display poller):
+
+* 25.08. ~09:5x — state fetched once: no fields owned, ``targets[0]`` a foreign
+  field ``124b0443``.
+* 25.08. 09:50 — besieged it. Correct: it was foreign.
+* 25.08. 10:03 — **captured it.** It is now his own.
+* until 26.08. 05:00 — **88 further sieges on that same, now self-owned field**,
+  because his world picture still said "no fields, target 124b0443".
+
+The same tree, in the same container, given a *fresh* state chose a different,
+foreign target. The code was never wrong; its input was 19 hours old.
+
+And the runner had removed its own refresh task in good faith, citing this
+module: *"that was a workaround for a loop which read the state without ever
+fetching it, and it has been fixed at the root instead."* The removed workaround
+was the only thing keeping the state current.
+
+Hence ``max_age_s``: a state older than one decision interval is, by definition,
+stale for the next decision. The threshold is not a chosen number — the loops
+pass their own ``interval_s``, so there is one source for it
+(``tree_loop``/``llm_decider``). An external poller (the Pet's display) keeps
+setting a *new* state object, which resets the clock; inside the Pet nothing
+changes, exactly as before.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 __all__ = ["StateSource"]
@@ -57,23 +91,63 @@ class StateSource:
 
     Order of preference:
 
-    1. ``agent.state`` — set by whoever polls (the Pet's display loop does).
-    2. ``agent.refresh_state()`` — fetched here when nobody did.
+    1. ``agent.state`` — set by whoever polls (the Pet's display loop does),
+       as long as it is younger than ``max_age_s``.
+    2. ``agent.refresh_state()`` — fetched here when nobody did, **or when what
+       they left behind has gone stale**.
 
     Keeps one counter so that a *persistent* absence is reported once at
     WARNING instead of once per round, and reports recovery too. Callers hold
     one instance per loop, mirroring how ``tree_loop`` holds its ``_Backoff``.
+
+    Args:
+        loud_after: Consecutive empty rounds before warning.
+        max_age_s: Maximum age of a state before it is re-fetched. ``None``
+            disables ageing — only for callers that provably keep the state
+            fresh themselves. The loops pass their own ``interval_s``: a state
+            older than one decision interval is stale for the next decision.
     """
 
-    def __init__(self, loud_after: int = DEFAULT_LOUD_AFTER) -> None:
+    def __init__(
+        self, loud_after: int = DEFAULT_LOUD_AFTER, max_age_s: float | None = None
+    ) -> None:
         self._missing_rounds = 0
         self._loud_after = loud_after
+        self._max_age_s = max_age_s
+        self._gesehen: Any = None
+        self._gesehen_um = 0.0
+
+    def _veraltet(self, state: Any) -> bool:
+        """True, wenn DIESES Zustands-Objekt hier zu lange unveraendert liegt.
+
+        Der Vergleich ist die **Identitaet**, nicht der Inhalt: ``refresh_state()``
+        baut bei jedem Abruf ein neues ``GameState`` (``GameState.from_api``).
+        Ein fremder Poller — der Display-Loop des Pets — legt also laufend ein
+        neues Objekt ab, und jedes neue Objekt stellt die Uhr zurueck. Damit
+        aendert sich im Pet nichts, und ein Loop ohne Poller holt selbst nach.
+        """
+        if self._max_age_s is None:
+            return False
+        jetzt = time.monotonic()
+        if state is not self._gesehen:
+            self._gesehen = state
+            self._gesehen_um = jetzt
+            return False
+        return (jetzt - self._gesehen_um) > self._max_age_s
 
     async def current(self, agent: Any) -> Any | None:
         """Return the state, fetching it if needed — or ``None`` and say so."""
         state = getattr(agent, "state", None)
-        if state is None:
-            state = await self._fetch(agent)
+        if state is None or self._veraltet(state):
+            frisch = await self._fetch(agent)
+            if frisch is not None:
+                state = frisch
+                self._gesehen = frisch
+                self._gesehen_um = time.monotonic()
+            # Fehlschlag bei vorhandenem Altzustand (Rate-Limit, transientes 5xx):
+            # lieber alt weiterarbeiten als gar nicht — aber die Uhr NICHT
+            # zurueckstellen, sonst wartet der naechste Versuch ein volles
+            # Intervall auf einen Zustand, der schon veraltet ist.
 
         if state is None:
             self._missing_rounds += 1
