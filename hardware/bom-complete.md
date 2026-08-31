@@ -3,6 +3,11 @@
 Everything from scratch. Recommended if you don't already own a Raspberry
 Pi. Lowest-cost path to a working Pet.
 
+This parts list is **exemplary**: these are commodity maker parts, prices
+and stock shift with the market. Buy equivalents wherever convenient —
+the wiring in [`wiring.md`](wiring.md) works with any SH1106 I²C display
+and any KY-040-style encoder.
+
 ## Parts
 
 | Part | Qty | Price (EUR) | Notes |
@@ -35,35 +40,9 @@ lying around. If not:
 
 These are commodity maker parts — SKUs vary by shop. The wiring table
 in [`wiring.md`](wiring.md) works with any SH1106 I²C display and any
-KY-040-style encoder.
-
-## Regional direct links (EU / DACH)
-
-If you're in Germany, Austria or Switzerland, here are single-parcel
-options:
-
-### Voelkner (DE) — single parcel, ~38 EUR
-
-| Part | Price (EUR) | Link |
-|---|---|---|
-| RPi Zero 2 W | 19.49 | [5171174](https://www.voelkner.de/products/5171174/Raspberry-Pi-Zero-2-W-Raspberry-Pi-Zero-2-W-512-MB-1-x-1.0-GHz.html) |
-| 1.3" OLED SH1106 | 7.30 | [12146484](https://www.voelkner.de/products/12146484/1.3-quot-128x64-OLED-Display-SH1106-IIC-I2C-Interface-einfarbig-blau.html) |
-| KY-040 Rotary Encoder | 1.53 | [12153902](https://www.voelkner.de/products/12153902/Drehregler-Rotary-Encoder-mit-Breakoutboard-ohne-Gewinde-und-Mutter.html) |
-| Dupont F-F cables | 2.40 | [12152443](https://www.voelkner.de/products/12152443/40pin-Jumper-Dupont-Kabel-Female-Female-trennbar-Laenge-0-50-m.html) |
-| microSD 16 GB | 7.09 | [6931473](https://www.voelkner.de/products/6931473/PNY-Micro-SD-Card-Elite-16-GB-HC-Komponenten-Speicher-Flash-Speicher.html) |
-
-Note: Pi Zero 2 W availability at Voelkner fluctuates. Check stock
-before ordering.
-
-### Amazon.de — usually faster, mixed vendors
-
-| Part | Price (EUR, ca.) | Link |
-|---|---|---|
-| RPi Zero 2 W | ~30 | [B09LH5SBPS](https://www.amazon.de/Raspberry-Pi-Zero-2-W/dp/B09LH5SBPS) |
-| microSD 16 GB (SanDisk Ultra) | ~5 | [B010Q57SEE](https://www.amazon.de/dp/B010Q57SEE) |
-| 1.3" OLED SH1106 I²C | ~8 | [B078J78R45](https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45) |
-| KY-040 Rotary Encoder (3-pack) | ~3 | [B08247Q69J](https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J) |
-| Dupont F-F cables (40 pcs) | ~3 | [B07ZPD7PH8](https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8) |
+KY-040-style encoder. Search any electronics retailer in your region
+for the part names above; per-part deep links go stale (prices drift,
+stock runs out), so this guide deliberately doesn't carry them.
 
 ## Software
 

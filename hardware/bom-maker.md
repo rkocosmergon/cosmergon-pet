@@ -26,21 +26,9 @@ push-switch.
 | [Adafruit](https://www.adafruit.com/) | US | 128×64 OLEDs (their default is SSD1306 — needs one-line code change), rotary encoders, jumpers |
 | [AliExpress](https://www.aliexpress.com/) | Global | Cheapest, slowest, quality varies — fine for commodity parts |
 
-## Regional direct links (EU / DACH)
-
-If you're in Germany, Austria or Switzerland, these ship next-day and
-save you international shipping:
-
-| Part | Shop | Link |
-|---|---|---|
-| 1.3" OLED SH1106 I²C | Amazon.de (AZ-Delivery) | [B078J78R45](https://www.amazon.de/AZDelivery-Display-Arduino-Raspberry-Gratis/dp/B078J78R45) |
-| 1.3" OLED SH1106 I²C | Voelkner | [12146484](https://www.voelkner.de/products/12146484/1.3-quot-128x64-OLED-Display-SH1106-IIC-I2C-Interface-einfarbig-blau.html) |
-| KY-040 Encoder (3-pack) | Amazon.de (AZ-Delivery) | [B08247Q69J](https://www.amazon.de/AZDelivery-KY-040-Drehwinkelgeber-Parent/dp/B08247Q69J) |
-| KY-040 Encoder | Voelkner | [12153902](https://www.voelkner.de/products/12153902/Drehregler-Rotary-Encoder-mit-Breakoutboard-ohne-Gewinde-und-Mutter.html) |
-| Dupont F-F cables (40 pcs) | Amazon.de (AZ-Delivery) | [B07ZPD7PH8](https://www.amazon.de/AZDelivery-Jumper-Wire-Kabel-Parent/dp/B07ZPD7PH8) |
-| Dupont F-F cables (40 pcs) | Voelkner | [12152443](https://www.voelkner.de/products/12152443/40pin-Jumper-Dupont-Kabel-Female-Female-trennbar-Laenge-0-50-m.html) |
-
-PRs adding direct links for other regions are welcome.
+These are commodity parts — search any electronics retailer in your
+region for the part names above. Per-part deep links go stale (prices
+drift, stock runs out), so this guide deliberately doesn't carry them.
 
 ## Compatibility
 
