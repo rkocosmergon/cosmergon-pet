@@ -39,3 +39,14 @@ jobs:
         run: PYTHONPATH=src pytest tests/ -q
         env:
           PYTHONDONTWRITEBYTECODE: "1"
+
+      # cosmergon#354 (S347): the Pet ships to other people's devices but had no
+      # recurring dependency audit (the SDK has one in its CI). Audits the DECLARED
+      # runtime deps from pyproject.toml — including the Pi hardware packages the test
+      # step above deliberately skips. pip>=26.1: see cosmergon-agent ci.yml (CVE-2026-3219).
+      - name: Dependency audit
+        run: |
+          pip install --upgrade "pip>=26.1" pip-audit
+          python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > /tmp/pet-deps.txt
+          cat /tmp/pet-deps.txt
+          pip-audit -r /tmp/pet-deps.txt
