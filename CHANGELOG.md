@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Decision loops wait for the next game tick.** Both loops (tree and LLM)
+  slept a fixed `interval_s` (60 s) between rounds, but the server allows one
+  action per tick and a tick is adaptive — on 2026-09-27 it lasted ~131 s, and
+  38 % of the Pet's actions came back `429`. The pause is now at least
+  `interval_s` and never ends before `next_tick_at` from the state (plus two
+  seconds); a stale `next_tick_at` is fetched once more, and without one the old
+  interval stays. (cosmergon#392)
+
 ## [0.8.7] — 2026-08-26
 
 ### Fixed

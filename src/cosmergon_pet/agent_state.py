@@ -183,3 +183,46 @@ class StateSource:
             # Same contract as the loops: nothing here may kill the Pet.
             logger.warning("refresh_state() failed: %s", e)
             return None
+
+
+TICK_PUFFER_S = 2.0
+"""Seconds after ``next_tick_at`` before acting.
+
+``next_tick_at`` is the server's estimate (last tick + running interval). Acting
+exactly on it can land a hair before the tick counter moves, and that is a 429.
+Two seconds cost nothing against a tick that lasts minutes.
+"""
+
+
+async def sekunden_bis_zur_naechsten_runde(
+    agent: Any, interval_s: float, *, jetzt: float | None = None
+) -> float:
+    """How long a decision loop waits before its next round (cosmergon#392).
+
+    At least ``interval_s``, and never before the next game tick. The server
+    allows one action per tick, and a tick is adaptive: on 2026-09-27 it lasted
+    ~131 s while both loops fired every 60 s — 38 % of the Pet's actions came
+    back 429. ``next_tick_at`` in the state is the server's answer to "when";
+    this function reads it instead of assuming a number.
+
+    A ``next_tick_at`` in the past means the state predates the last tick, so it
+    is fetched once more. Without a usable value the loop keeps ``interval_s`` —
+    the old behaviour, never worse. Never raises.
+
+    Args:
+        agent: SDK agent (``state`` slot, optional ``refresh_state()``).
+        interval_s: The loop's own minimum pause between rounds.
+        jetzt: Unix time to compute against; ``None`` means now (tests pass it).
+
+    Returns:
+        Seconds to wait before the next round.
+    """
+    jetzt = time.time() if jetzt is None else jetzt
+    state = getattr(agent, "state", None)
+    naechster = getattr(state, "next_tick_at", None)
+    if not naechster or naechster <= jetzt:
+        frisch = await StateSource._fetch(agent)
+        naechster = getattr(frisch, "next_tick_at", None)
+    if not naechster or naechster <= jetzt:
+        return interval_s
+    return max(interval_s, naechster - jetzt + TICK_PUFFER_S)

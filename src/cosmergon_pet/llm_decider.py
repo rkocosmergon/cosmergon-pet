@@ -44,7 +44,7 @@ from typing import Any
 
 from cosmergon_agent import CosmergonAgent
 
-from .agent_state import StateSource
+from .agent_state import StateSource, sekunden_bis_zur_naechsten_runde
 from .face import EVOLUTION_ENERGY_COST, REIFE_THRESHOLDS, TIER_REQUIRED_TYPE
 from .llm import LLMProvider, LLMProviderError
 
@@ -434,7 +434,9 @@ async def llm_decision_loop(
             # Catch-all: nothing in this loop is allowed to kill the Pet.
             logger.warning("llm_decision_loop iteration failed", exc_info=True)
         try:
-            await asyncio.wait_for(stop.wait(), timeout=interval_s)
+            # cosmergon#392: wait for the next game tick, not a fixed 60 s.
+            warte = await sekunden_bis_zur_naechsten_runde(agent, interval_s)
+            await asyncio.wait_for(stop.wait(), timeout=warte)
         except asyncio.TimeoutError:
             continue
     logger.info("llm_decision_loop stopped")
