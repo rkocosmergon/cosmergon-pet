@@ -6,6 +6,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.8] — 2026-09-28
+
 ### Fixed
 
 - **Decision loops wait for the next game tick.** Both loops (tree and LLM)
