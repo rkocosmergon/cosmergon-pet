@@ -96,7 +96,11 @@ async def test_free_slot_beats_conquest_despite_chain_facts() -> None:
         energy=11_449,
         fields=[],
         cubes=[cube],  # free build slot
-        available_actions=_fieldless_solvent_facts(),
+        # v2.3.2: the server reports the free slot too (available = can_afford
+        # AND slot free) — the fieldless fixture says "no build slot".
+        available_actions=_fieldless_solvent_facts(
+            create_field={"can_afford": True, "next_cost": 500.0, "available": True}
+        ),
         compass="explore",
     )
     action, params = await TreeDecider().decide(state)
@@ -681,6 +685,27 @@ def test_laufende_mission_sperrt_start_mission_serverseitig() -> None:
 
     st.available_actions["start_mission"]["marauder_state"] = "recovery"
     assert is_valid(st, "start_mission") is True
+
+
+def test_laufende_mission_bei_koerper_in_recovery_kein_start() -> None:
+    """v2.3.2 (cosmergon#405) — rot gegen v2.3.1. Socket-hand 27.09. 19:36Z:
+    Mission laeuft, Koerper steht in ``recovery`` — ``marauder_state`` allein
+    ist also kein Beweis fuer einen freien Koerper. Der Server sagt
+    ``available: false``; der Baum startet nicht (vorher 6 x 409 in 2 h)."""
+    import asyncio
+
+    from cosmergon_pet.decider_tree import TreeDecider, is_valid
+
+    st = _landweg_zustand(bomben=0, ziele=[], loot_id="loot-94de")
+    st.available_actions["start_mission"]["marauder_state"] = "recovery"
+    st.available_actions["start_mission"]["available"] = False
+    st.energy = 9_998.0
+    st.my_mission = None
+    st.pending_contracts = []
+
+    assert is_valid(st, "start_mission") is False
+    action, _ = asyncio.run(TreeDecider().decide(st))
+    assert action != "start_mission"
 
 
 # --- v2.3.1 Kaufabsicht (S308, Live-Fall Socket-hand) ------------------------

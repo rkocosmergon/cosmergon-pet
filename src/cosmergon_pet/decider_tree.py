@@ -1,7 +1,13 @@
-"""TreeDecider v2.3.1 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.3.2 changes (S353, cosmergon#405, am Live-Fall Socket-hand):
+  - ``is_valid`` liest zuerst das Server-Faktum ``available`` je Aktion; ein
+    ``false`` macht den Zug ungueltig. Die eigene Nachbildung
+    (``marauder_state != "recovery"``) liess ``start_mission`` bei laufender
+    Mission durch — 6 x 409 in 2 h, danach 30 Runden Backoff.
 
 v2.3.1 changes (S308, am Live-Fall Socket-hand):
   - Kaufabsicht statt Blindkauf (Server-P3b-Analog): market_buy entsteht
@@ -344,6 +350,18 @@ def _start_mission_moeglich(state: GameState) -> bool:
     return bool(resolve_action_params(state, "start_mission", persona_v))
 
 
+def _server_verneint(state: GameState, action: str) -> bool:
+    """v2.3.2 (cosmergon#405): sagt der Server ``available: false``?
+
+    Jedes ``available`` der Fakten ist eine notwendige Bedingung des Backends;
+    es gilt vor jeder eigenen Nachbildung. Die Nachbildung
+    ``marauder_state != "recovery"`` liess Starts bei laufender Mission durch
+    (der Koerper bleibt dabei in recovery). Fehlt das Feld (aelterer Server),
+    sperrt nichts."""
+    fakten = (getattr(state, "available_actions", None) or {}).get(action)
+    return isinstance(fakten, dict) and fakten.get("available") is False
+
+
 def is_valid(state: GameState, action: str) -> bool:
     """Vor-Backend-Validity-Check. Verhindert dass Tree eine Action wählt,
     die das Backend mit 400 ablehnen würde."""
@@ -352,6 +370,9 @@ def is_valid(state: GameState, action: str) -> bool:
 
     if _energy(state) < CRITICAL_ENERGY:
         return action == "wait"  # nur wait erlaubt im Critical-Modus
+
+    if _server_verneint(state, action):
+        return False
 
     if action == "create_field":
         return _can_afford_field(state) and len(_universe_cubes(state)) > 0
@@ -1189,7 +1210,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.0"
+    version: str = "2.3.2"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

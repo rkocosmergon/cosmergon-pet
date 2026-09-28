@@ -15,6 +15,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `interval_s` and never ends before `next_tick_at` from the state (plus two
   seconds); a stale `next_tick_at` is fetched once more, and without one the old
   interval stays. (cosmergon#392)
+- **Tree decider reads the server's `available` flag first.** For
+  `start_mission` it only checked `marauder_state != "recovery"` — but the
+  body stays in `recovery` while some missions run, so the Pet tried to start a
+  second mission and got `409` (6 times in 2 hours on 2026-09-27, each time
+  followed by a 30-round backoff that also blocked valid starts). Any action
+  whose server facts say `available: false` is now invalid; without the flag
+  (older server) nothing changes. Tree decider v2.3.2. (cosmergon#405)
 
 ## [0.8.7] — 2026-08-26
 
