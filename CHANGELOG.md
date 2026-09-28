@@ -6,6 +6,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.9] — 2026-09-28
+
+### Fixed
+
+- **No second action in the same game tick.** 0.8.8 timed its rounds by
+  `next_tick_at`, but that is an estimate from the mean tick period, and real
+  ticks vary by several seconds (67–74 s measured). With 2 s of buffer the Pet
+  still acted a moment before the tick counter moved: 10.5 % of its actions came
+  back `429` in a clean one-hour window. Both loops now also compare the server's
+  tick counter (`GameState.tick`, the one the one-action-per-tick rule counts):
+  a round does not start while the tick of the previous round is still running
+  (checked every 3 s, at most one interval). (cosmergon#392)
+
 ## [0.8.8] — 2026-09-28
 
 ### Fixed

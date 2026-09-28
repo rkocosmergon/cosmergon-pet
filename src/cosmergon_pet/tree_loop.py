@@ -30,7 +30,12 @@ from typing import Any
 
 from cosmergon_agent import CosmergonAgent
 
-from .agent_state import StateSource, sekunden_bis_zur_naechsten_runde
+from .agent_state import (
+    StateSource,
+    aktueller_tick,
+    sekunden_bis_zur_naechsten_runde,
+    tick_wechsel_abwarten,
+)
 from .decider_tree import VALID_ACTIONS, TreeDecider
 
 logger = logging.getLogger(__name__)
@@ -246,10 +251,14 @@ async def tree_decision_loop(
         except Exception:
             # Catch-all: nothing in this loop is allowed to kill the Pet.
             logger.warning("tree_decision_loop iteration failed", exc_info=True)
+        # cosmergon#392: remember the tick this round ran in (fresh, not the cached
+        # decision state) — the estimate below can be seconds early.
+        runden_tick = await aktueller_tick(agent)
         try:
             # cosmergon#392: wait for the next game tick, not a fixed 60 s.
             warte = await sekunden_bis_zur_naechsten_runde(agent, interval_s)
             await asyncio.wait_for(stop.wait(), timeout=warte)
         except asyncio.TimeoutError:
-            continue
+            pass
+        await tick_wechsel_abwarten(agent, runden_tick, stop, hoechstens_s=interval_s)
     logger.info("tree_decision_loop stopped")

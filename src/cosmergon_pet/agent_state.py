@@ -68,6 +68,7 @@ changes, exactly as before.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -226,3 +227,55 @@ async def sekunden_bis_zur_naechsten_runde(
     if not naechster or naechster <= jetzt:
         return interval_s
     return max(interval_s, naechster - jetzt + TICK_PUFFER_S)
+
+
+TICK_NACHFRAGE_S = 3.0
+"""Seconds between state checks while waiting for the tick counter to move."""
+
+
+async def aktueller_tick(agent: Any) -> int | None:
+    """The server's tick right now, from a fresh state — ``None`` if unavailable.
+
+    Taken right after an action as the reference for ``tick_wechsel_abwarten``:
+    the state a round decided on may be cached and older than the tick the
+    action actually landed in. Never raises.
+    """
+    frisch = await StateSource._fetch(agent)
+    tick = getattr(frisch, "tick", None)
+    return tick if isinstance(tick, int) and tick > 0 else None
+
+
+async def tick_wechsel_abwarten(
+    agent: Any,
+    letzter_tick: int | None,
+    stop: asyncio.Event,
+    *,
+    hoechstens_s: float,
+) -> None:
+    """Wait until the server's tick counter has moved past ``letzter_tick`` (cosmergon#392).
+
+    ``next_tick_at`` is an estimate from the mean period; real ticks vary by
+    several seconds (67-74 s measured on 2026-09-28), and 2 s of buffer did not
+    cover it: 10.5 % of the Pet's actions still came back 429. The server counts
+    one action per tick by ``GameState.tick`` — the same counter this function
+    compares — so a round never starts while the tick of its last action is
+    still running. Checks every ``TICK_NACHFRAGE_S``, gives up after
+    ``hoechstens_s`` (the old behaviour, never worse). Never raises.
+
+    Args:
+        agent: SDK agent (``state`` slot, optional ``refresh_state()``).
+        letzter_tick: Tick of the last action, or ``None`` when the round did not act.
+        stop: The loop's stop event; honoured while waiting.
+        hoechstens_s: Upper bound for the whole wait.
+    """
+    if not letzter_tick:
+        return
+    frist = time.monotonic() + hoechstens_s
+    while not stop.is_set():
+        frisch = await StateSource._fetch(agent)
+        if getattr(frisch, "tick", None) != letzter_tick or time.monotonic() >= frist:
+            return
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=TICK_NACHFRAGE_S)
+        except asyncio.TimeoutError:
+            continue
