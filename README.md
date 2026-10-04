@@ -113,7 +113,7 @@ On the Pet, start with `--with-llm ollama`:
 ```bash
 PET_LLM_OLLAMA_URL=http://mac-mini.local:11434 \
 PET_LLM_OLLAMA_MODEL=llama3.2:3b \
-COSMERGON_API_KEY=ck_... \
+COSMERGON_API_KEY=AGENT-XXXXXX:your-secret \
 cosmergon-pet --with-llm ollama --log-level INFO
 ```
 
