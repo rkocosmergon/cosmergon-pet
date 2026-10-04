@@ -9,7 +9,7 @@ Configuration via env vars (CLI-overridable from face.py):
   PET_LLM_OLLAMA_MODEL default ``llama3.2:3b``
 
 For a Mac Mini in the LAN, point the URL at the host:
-  ``http://mac-mini.local:11434`` (mDNS) or a static IP.
+  ``http://ollama-host.local:11434`` (mDNS) or a static IP.
 """
 
 from __future__ import annotations

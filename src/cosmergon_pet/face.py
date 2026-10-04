@@ -1451,7 +1451,7 @@ def main() -> None:
         help=(
             "Enable autonomous LLM-driven decisions. Provider name from "
             "cosmergon_pet.llm.available_providers() (today: 'ollama'). "
-            "Configure via env vars, e.g. PET_LLM_OLLAMA_URL=http://mac-mini.local:11434 "
+            "Configure via env vars, e.g. PET_LLM_OLLAMA_URL=http://ollama-host.local:11434 "
             "and PET_LLM_OLLAMA_MODEL=llama3.2:3b."
         ),
     )

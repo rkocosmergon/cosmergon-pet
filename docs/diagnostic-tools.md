@@ -1,11 +1,11 @@
 # Diagnostic Tools — Pet LLM Decision Path
 
-Tools for diagnosing Pet-LLM behavior **without** cobot-live A/B-hopping.
+Tools for diagnosing Pet-LLM behavior **without** live-Pet A/B-hopping.
 S163 A.2 Methoden-Pflicht (cos20 TODO.md): never iterate live with three
-hypotheses in parallel. Single-hypothesis lab work first, cobot-live only
+hypotheses in parallel. Single-hypothesis lab work first, live Pet only
 as final validation.
 
-## 1. Per-Decision JSONL Dump (live cobot)
+## 1. Per-Decision JSONL Dump (live Pet)
 
 Activate by setting an env var on the Pet service. Each decision writes
 two JSONL entries to the same file:
@@ -35,7 +35,7 @@ The legacy env var `COSMERGON_PET_PROMPT_DUMP_PATH` keeps working —
 it's the same code path under the older name. New deployments should
 use `COSMERGON_PET_DECISION_DUMP_PATH` for clarity.
 
-## 2. Local Experiment Harness (no cobot needed)
+## 2. Local Experiment Harness (no live Pet needed)
 
 Reproduces Pet's prompt-builder + JSON-Schema constraints against an
 Ollama instance N times for a fixed mock state. Output is the same
@@ -65,7 +65,7 @@ python scripts/local-experiment.py \
     --persona warrior \
     --balance 50000 \
     --model qwen2.5:7b \
-    --ollama-url http://mac-mini.local:11434 \
+    --ollama-url http://ollama-host.local:11434 \
     --output /tmp/exp-warrior.jsonl
 ```
 
@@ -85,12 +85,12 @@ S163-A.2 method:
 3. **Local re-run.** Same `--runs` and `--persona` as the baseline.
    Compare distributions head-to-head.
 4. **Cobot-deploy only if local change shows directional improvement.**
-   Live-cobot is the final validation step — never the search step.
+   The live Pet is the final validation step — never the search step.
 5. **Pre-registered prediction before the run.** Write the expected
    distribution into the relevant session note so the result is
    falsifiable. Cf. memory `feedback_pre_registered_predictions`.
 
-Anti-pattern (rejected in S160 + S162): three hypotheses live on cobot
+Anti-pattern (rejected in S160 + S162): three hypotheses live on the Pet
 in parallel, each iteration ~30 minutes between deploys, after 5 hours
 no causal claim is possible because the samples are interleaved.
 

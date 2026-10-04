@@ -79,7 +79,7 @@ Verify the version after:
 ## Autonomous mode — connect your own LLM
 
 By default the Pet executes the action you pick with the encoder. With
-`--with-llm`, the Pet asks an LLM every tick (~60 s) what to do next and
+`--with-llm`, the Pet asks an LLM at a fixed interval (`--llm-interval-s`) what to do next and
 executes that action automatically. Encoder-driven moves still work
 alongside — you can always override.
 
@@ -93,25 +93,25 @@ and pay for the inference. Currently supported provider: `ollama`
 (local or LAN). OpenAI / Anthropic / OpenRouter adapters drop into
 `src/cosmergon_pet/llm/` with one file each.
 
-### Canonical setup: Pet (RPi) + Ollama (Mac Mini)
+### Canonical setup: Pet (RPi) + Ollama on another machine in your LAN
 
-On the Mac Mini, expose Ollama on the LAN once:
+On the Ollama machine, expose Ollama on the LAN once:
 
 ```bash
 launchctl setenv OLLAMA_HOST 0.0.0.0:11434
-ollama pull llama3.2:3b   # the S101 winner; ~3 GB RAM
+ollama pull llama3.2:3b   # ~3 GB RAM
 ```
 
 Verify from the Pet:
 
 ```bash
-curl http://mac-mini.local:11434/api/tags
+curl http://ollama-host.local:11434/api/tags
 ```
 
 On the Pet, start with `--with-llm ollama`:
 
 ```bash
-PET_LLM_OLLAMA_URL=http://mac-mini.local:11434 \
+PET_LLM_OLLAMA_URL=http://ollama-host.local:11434 \
 PET_LLM_OLLAMA_MODEL=llama3.2:3b \
 COSMERGON_API_KEY=AGENT-XXXXXX:your-secret \
 cosmergon-pet --with-llm ollama --log-level INFO

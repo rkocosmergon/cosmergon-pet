@@ -62,8 +62,8 @@ def test_ollama_provider_satisfies_protocol() -> None:
 def test_ollama_url_normalisation() -> None:
     """Trailing slash on URL is stripped (canonical form for f-string concat)."""
     llm = _import_or_skip()
-    p = llm.OllamaProvider(url="http://mac-mini.local:11434/", model="llama3.2:3b")
-    assert p.url == "http://mac-mini.local:11434"
+    p = llm.OllamaProvider(url="http://ollama-host.local:11434/", model="llama3.2:3b")
+    assert p.url == "http://ollama-host.local:11434"
 
 
 def test_ollama_env_var_defaults(monkeypatch: Any) -> None:

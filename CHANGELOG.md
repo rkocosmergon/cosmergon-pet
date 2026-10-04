@@ -6,6 +6,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs and examples use a neutral Ollama host name** (`ollama-host.local`) instead of an
+  internal machine name; the LLM interval is named by its option (`--llm-interval-s`)
+  instead of a fixed figure. (cosmergon#443)
+
 ## [0.8.9] — 2026-09-28
 
 ### Fixed
@@ -882,7 +888,7 @@ the moment the next decision tick fires.
 
 ### Pre-registered prediction (verified after deploy)
 
-- ≥1 successful `place_cells` in the first 5 ticks on cobot.
+- ≥1 successful `place_cells` in the first 5 ticks on the live Pet.
 - wait-rate over 30 Ticks should drop from 100% (v0.1.16) to ≤50%.
 - If both fail: fall back to model-swap experiment (qwen2.5:7b →
   llama3.2:3b, the NPC default — same chassis, smaller model that

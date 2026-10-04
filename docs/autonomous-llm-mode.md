@@ -91,7 +91,7 @@ Verify the LAN listener:
 
 ```bash
 # from another machine in the same LAN:
-curl http://<mac-mini-ip>:11434/api/tags
+curl http://<ollama-host-ip>:11434/api/tags
 # expect a JSON list of pulled models
 ```
 
@@ -100,7 +100,7 @@ curl http://<mac-mini-ip>:11434/api/tags
 On the Pet (after the standard install — see top-level README):
 
 ```bash
-PET_LLM_OLLAMA_URL=http://mac-mini.local:11434 \
+PET_LLM_OLLAMA_URL=http://ollama-host.local:11434 \
 PET_LLM_OLLAMA_MODEL=llama3.2:3b \
 COSMERGON_API_KEY=ck_...your_key... \
 cosmergon-pet --with-llm ollama --log-level INFO

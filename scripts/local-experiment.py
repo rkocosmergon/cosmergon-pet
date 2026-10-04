@@ -5,7 +5,7 @@ Runs Pet's actual prompt-builder + JSON-schema constraints against an
 Ollama instance N times for a fixed mock state, dumps per-decision
 JSONL, and prints an action-distribution summary.
 
-Purpose: test ONE hypothesis at a time without touching live cobot.
+Purpose: test ONE hypothesis at a time without touching a live Pet.
 S160/S162 lesson — Live-A/B-Hopping with 3 hypotheses produces phantom
 bugs. Run this locally first.
 
@@ -21,9 +21,9 @@ Usage:
     # Override defaults:
     python scripts/local-experiment.py --runs 20 --persona warrior \
         --balance 50000 --model qwen2.5:7b \
-        --ollama-url http://mac-mini.local:11434
+        --ollama-url http://ollama-host.local:11434
 
-The output JSONL is the same format the live-cobot dump uses (S163 A.2
+The output JSONL is the same format the live Pet dump uses (S163 A.2
 extension), so the same downstream tooling works on either source.
 """
 
