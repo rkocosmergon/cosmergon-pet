@@ -1,7 +1,12 @@
-"""TreeDecider v2.3.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.4 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.3.4 changes (06.10.2026, cosmergon#451):
+  - Kompass-Preset ``trade`` wirkt: der Server setzt es, ``COMPASS_BIAS`` kannte
+    es nicht, die Instruktion verpuffte still. (2.3.3 war nur ein Paket-Pin der
+    Quelle, im Pet ohne Entsprechung.)
 
 v2.3.2 changes (S353, cosmergon#405, am Live-Fall Socket-hand):
   - ``is_valid`` liest zuerst das Server-Faktum ``available`` je Aktion; ein
@@ -1210,7 +1215,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.2"
+    version: str = "2.3.4"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

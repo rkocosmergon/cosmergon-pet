@@ -814,3 +814,35 @@ def test_delta_folgt_demselben_kern() -> None:
     )
     state.world_briefing.market.buyable = [_preset_listing()]
     assert _predict_delta(state, "market_buy", {}) == {}
+
+
+def test_trade_kompass_hebt_den_markt() -> None:
+    """v2.3.4 (cosmergon#451) — rot gegen v2.3.2: der Server setzt das Preset
+    ``trade``, ``COMPASS_BIAS`` kannte es nicht, ``decide`` fiel auf ``{}``
+    zurueck und die Instruktion verpuffte still. Gemessen auf demselben Weg
+    wie ``decide`` (``COMPASS_BIAS.get(compass or "autonomous", {})``)."""
+    from cosmergon_pet.decider_tree import COMPASS_BIAS, _score_pool
+    from cosmergon_pet.persona_profiles import PERSONA_ACTION_BIAS, PERSONA_ACTION_POOLS
+
+    state = _make_state(
+        persona="trader",
+        energy=11_449,
+        fields=[SimpleNamespace(id="f1", entity_tier=1)],
+        available_actions=_fieldless_solvent_facts(),
+    )
+
+    def bewertung(kompass: str) -> dict[str, float]:
+        scores = _score_pool(
+            state,
+            "trader",
+            PERSONA_ACTION_POOLS["trader"],
+            {"kind": "energy_at_least", "target": 20_000},
+            PERSONA_ACTION_BIAS.get("trader", {}),
+            COMPASS_BIAS.get(kompass, {}),
+            frozenset(),
+        )
+        return {a: s for a, (s, _) in scores.items()}
+
+    ohne, mit = bewertung("autonomous"), bewertung("trade")
+    assert "market_list" in ohne
+    assert mit["market_list"] - ohne["market_list"] == pytest.approx(0.2)

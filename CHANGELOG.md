@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.10] — 2026-10-06
+
+### Fixed
+
+- **The `trade` compass now has an effect.** The server offers the compass preset
+  `trade` (marketplace activity), but the vendored tree decider had no bias entry for
+  it, so the instruction was silently ignored. It now raises `market_list` and
+  `market_buy` (+0.2) and `propose_contract` (+0.1). Tree decider 2.3.4.
+  (cosmergon#451)
+
 ### Changed
 
 - **Docs and examples use a neutral Ollama host name** (`ollama-host.local`) instead of an
