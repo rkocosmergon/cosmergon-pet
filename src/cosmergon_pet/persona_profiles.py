@@ -249,15 +249,9 @@ für Goodwill-Tausch."""
 COMPASS_BIAS: dict[str, dict[str, float]] = {
     # Compass = temporärer Tweak des Persona-Bias. Wird additiv kombiniert.
     # Skala [-0.2, +0.2] — kleiner als Persona-Bias damit Persona dominant bleibt.
-    # ⚠ 06.10.2026: der Server kennt `consolidate` nicht (core/compass.py:COMPASS_PRESETS) —
-    # der Eintrag wird nie gesetzt. Ob er bleibt, ist offen (cosmergon#451).
-    "consolidate": {
-        # Pflege bevorzugen, Wachstum drosseln
-        "place_cells": +0.2,
-        "evolve": +0.1,
-        "create_field": -0.2,
-        "market_buy": -0.1,
-    },
+    # Die Schluessel sind genau die Kompass-Presets des Servers (POST /agents/{id}/compass):
+    # ein Preset ohne Eintrag hier verpufft, ein Eintrag ohne Preset wird nie gesetzt.
+    # `consolidate` entfernt (08.10.2026): der Server kennt ihn nicht.
     "defend": {
         # Defensiv-Verträge, Territorial-Refill
         "propose_contract": +0.2,
