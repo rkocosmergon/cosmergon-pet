@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.11] — 2026-10-13
+
+### Fixed
+
+- **Energy is no longer offered far below its worth.** The vendored tree decider named a
+  fixed price of 400-500 for an energy listing while the amount grew with the balance:
+  a rich agent offered tens of thousands of energy for 450. It now sends no price for
+  energy; the server sets one that is never below what the seller gives away
+  (tree decider 2.3.5).
+
 ## [0.8.10] — 2026-10-06
 
 ### Fixed

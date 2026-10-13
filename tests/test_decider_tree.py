@@ -258,7 +258,8 @@ def test_market_list_energie_bei_ueberschuss() -> None:
         available_actions=_ml_actions(available=True, energy=2_500),
     )
     plan = _market_list_plan(state)
-    assert plan == {"price_energy": 450}  # scientist
+    # Tree 2.3.5: kein eigener Preis fuer Energie — der Server setzt ihn aus der Menge.
+    assert plan == {}
 
 
 def test_market_list_item_mit_marktreferenz() -> None:
