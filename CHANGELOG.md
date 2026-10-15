@@ -6,6 +6,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.12] — 2026-10-15
+
+### Fixed
+
+- **The face is sad when energy is declining.** The server sends the energy trend as
+  `rising`, `stable` or `declining`. The face checked `falling`, a word the state never
+  sent: it was never sad when energy fell, and the trend line showed the raw word. Now
+  `declining` makes the face struggle and the trend line says `down`.
+- **No new energy offer while one of your own is still open.** The vendored tree decider
+  (2.3.6) lists energy only when `available_actions.market_list.open_energy_listings` is 0
+  or missing. Each offer holds its amount until it is sold or expires; servers without the
+  key behave as before.
+
 ## [0.8.11] — 2026-10-13
 
 ### Fixed
