@@ -1,7 +1,13 @@
-"""TreeDecider v2.3.5 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.6 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.3.6 changes (15.10.2026, cosmergon#491):
+  - ``market_list`` legt keine Energie nach, solange ein eigenes Energie-Angebot offen ist
+    (``available_actions.market_list.open_energy_listings``). Jedes Angebot haelt seine Menge
+    bis Verkauf oder Ablauf zurueck. Gedecktes Inventar geht weiter. Aeltere Server ohne den
+    Schluessel: Verhalten unveraendert.
 
 v2.3.5 changes (13.10.2026, cosmergon#477):
   - ``market_list`` fuer Energie ohne eigenen Preis: die Menge waechst mit dem Guthaben,
@@ -481,6 +487,17 @@ def _markt_referenzpreise(state: GameState, ml: dict[str, Any]) -> dict[str, flo
     return referenz
 
 
+def _energie_angebot_offen(ml: dict[str, Any]) -> bool:
+    """Steht schon ein eigenes Energie-Angebot unverkauft im Markt (2.3.6, cosmergon#491)?
+
+    Fehlt der Schluessel (aelterer Server), gilt: nein — das Verhalten bleibt wie vor 2.3.6.
+    """
+    try:
+        return int(ml.get("open_energy_listings") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     """Was KANN dieser Agent listen? Eine Quelle für is_valid + resolve (v2.1.0).
 
@@ -510,7 +527,7 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
         return None
 
     try:
-        if float(ml.get("sellable_energy") or 0) > 0:
+        if float(ml.get("sellable_energy") or 0) > 0 and not _energie_angebot_offen(ml):
             # 2.3.5: no price of our own for energy. The amount offered grows with the
             # balance (the server sets it), a fixed 400-500 did not: rich agents sold six-digit
             # amounts of energy for 450. Without a price the server sets one that is never

@@ -262,7 +262,10 @@ def mood_from_state(ps: PetState, now: float) -> str:
         return "struggling"
     if situation and situation.fields_owned == 0:
         return "struggling"
-    if trend == "falling":
+    # The server says ``declining`` (``rising``/``stable``/``declining``, a Literal in its
+    # schema). Until 0.8.12 this checked ``falling``, a word the state never sent: the face
+    # was never sad when energy fell (cos20 #489).
+    if trend == "declining":
         return "struggling"
     if trend == "rising":
         return "thriving"
@@ -477,7 +480,7 @@ def _render_energy(ps: PetState, now: float) -> list[str]:
     rank = state.world_briefing.your_rank if state.world_briefing else 0
     total = state.world_briefing.total_agents if state.world_briefing else 0
     trend = state.world_briefing.situation.energy_trend if state.world_briefing else "stable"
-    trend_arrow = {"rising": "up", "falling": "down", "stable": "stable"}.get(trend, trend)
+    trend_arrow = {"rising": "up", "declining": "down", "stable": "stable"}.get(trend, trend)
     return [
         f"Energy: {int(state.energy)} E",
         f"Trend:  {trend_arrow}",

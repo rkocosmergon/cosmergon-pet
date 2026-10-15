@@ -847,3 +847,14 @@ def test_trade_kompass_hebt_den_markt() -> None:
     ohne, mit = bewertung("autonomous"), bewertung("trade")
     assert "market_list" in ohne
     assert mit["market_list"] - ohne["market_list"] == pytest.approx(0.2)
+
+
+def test_market_list_legt_keine_energie_nach_solange_ein_angebot_offen_ist() -> None:
+    """2.3.6 (cosmergon#491): ein offenes eigenes Energie-Angebot ⇒ kein weiteres."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    actions = _ml_actions(available=True, energy=2_500)
+    actions["market_list"]["open_energy_listings"] = 1
+    assert _market_list_plan(_make_state(energy=20_000, available_actions=actions)) is None
+    actions["market_list"]["open_energy_listings"] = 0
+    assert _market_list_plan(_make_state(energy=20_000, available_actions=actions)) == {}
