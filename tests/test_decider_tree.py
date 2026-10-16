@@ -858,3 +858,32 @@ def test_market_list_legt_keine_energie_nach_solange_ein_angebot_offen_ist() -> 
     assert _market_list_plan(_make_state(energy=20_000, available_actions=actions)) is None
     actions["market_list"]["open_energy_listings"] = 0
     assert _market_list_plan(_make_state(energy=20_000, available_actions=actions)) == {}
+
+
+def test_offenes_energie_angebot_faellt_nicht_auf_die_bombe_durch() -> None:
+    """2.3.7 (cosmergon#491): verkaufbare Energie, ein Angebot offen, eine Bombe im Inventar.
+
+    2.3.6 listete dann die Bombe (Turnier-Kette). Jetzt kein Markt-Zug; ohne verkaufbare
+    Energie bleibt die Bombe der Ausweg (S297).
+    """
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    actions = _ml_actions(available=True, energy=2_500, items={"mega_bomb": 1})
+    actions["market_list"]["open_energy_listings"] = 1
+    actions["market_list"]["reference_prices"] = {"mega_bomb": 1_000}
+    assert _market_list_plan(_make_state(energy=20_000, available_actions=actions)) is None
+    actions["market_list"]["sellable_energy"] = 0
+    plan = _market_list_plan(_make_state(energy=1_200, available_actions=actions))
+    assert plan is not None and plan["item_type"] == "mega_bomb"
+
+
+def test_scientist_mit_feld_sammelt() -> None:
+    """2.3.7 (cosmergon#494): scientist mit Feld startet gather_spores statt leerer Erkundung."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    feld = SimpleNamespace(id="f1", active_cell_count=40, hole_count=0, entity_tier=1)
+    st = _make_state(persona="scientist", fields=[feld], cubes=[])
+    st.reachable_cubes = [_cube()]
+    assert _draht(resolve_action_params(st, "start_mission", "scientist"))["mission_type"] == (
+        "gather_spores"
+    )
