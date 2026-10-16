@@ -58,12 +58,21 @@ def _einmal_zeichnen(display: object, ps: face.PetState) -> None:
 
 
 def _ruhender_zustand() -> face.PetState:
-    """Zustand, der den Bildschirmschoner auslöst: Bildschirm 1, kein Menü."""
+    """Zustand, der den Bildschirmschoner auslöst: Bildschirm 1, kein Menü.
+
+    Die letzte Eingabe liegt eine Stunde zurück. Mit 0.0 („nie“) zählt der Ablauf ab
+    ``monotonic() == 0``, also ab dem Systemstart; auf einem frisch gestarteten CI-Runner
+    waren das manchmal weniger als SCREENSAVER_AFTER_SECONDS — dann zeichnete er den
+    Textschirm, und diese Tests schlugen fehl (CI 16.10.2026, Lauf 38884183127).
+    """
+    import time
+
+    vorher = time.monotonic() - 3600.0
     ps = face.PetState()
     ps.current_screen = 0
     ps.menu_open = False
-    ps.last_rotation_at = 0.0
-    ps.last_action_at = 0.0
+    ps.last_rotation_at = vorher
+    ps.last_action_at = vorher
     return ps
 
 
