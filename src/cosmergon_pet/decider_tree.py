@@ -10,6 +10,8 @@ v2.3.7 changes (16.10.2026):
     in einer Stunde, cosmergon#491). Gegenstaende bleiben der Ausweg ohne verkaufbare Energie.
   - Persona ``scientist`` startet keine Erkundung ohne Zielspieler mehr, sondern sammelt
     auf dem eigenen Feld (cosmergon#494: 465 von 465 Auskuenften leer).
+  - ``blocked`` gilt auch fuer Vertragszuege: ein offener Vertrag kam bisher vor der Sperrliste
+    zurueck, auch wenn der Loop ``accept_contract``/``reject_contract`` gesperrt hatte.
   - ``TreeDecider.version`` stand seit 2.3.6 auf "2.3.5", jetzt mit dem Paket gleich.
 
 v2.3.6 changes (15.10.2026):
@@ -1283,7 +1285,9 @@ class TreeDecider:
         # "ALLE dürfen ALLES vereinbaren"). Pro decide()-Call max 1 Vertrags-
         # Entscheidung, dann normaler Tree-Pfad.
         contract_decision = _decide_pending_contract(state, persona)
-        if contract_decision is not None:
+        # 2.3.7 (cosmergon#491): auch ein Vertragszug haelt die Sperrliste ein — der Loop sperrt
+        # einen Zug, den der Server wiederholt ablehnt; vorher kam er hier trotzdem zurueck.
+        if contract_decision is not None and contract_decision[0] not in blocked:
             return contract_decision
 
         compass = getattr(state, "compass_preset", None)

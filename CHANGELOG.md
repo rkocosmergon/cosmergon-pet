@@ -17,6 +17,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A scientist no longer scouts for nothing.** It started terminal scouting without a
   target player, and every report came back empty. With a field it now collects on it, like
   the other personas; without a field the scouting fallback stays.
+- **A blocked contract move stays blocked.** After three refusals the loop blocks a move for
+  30 rounds; a pending contract came back before that block list and was sent again. Tree
+  decider 2.3.7 now holds the block for contracts too.
 
 ## [0.8.12] — 2026-10-15
 

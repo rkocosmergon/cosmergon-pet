@@ -887,3 +887,16 @@ def test_scientist_mit_feld_sammelt() -> None:
     assert _draht(resolve_action_params(st, "start_mission", "scientist"))["mission_type"] == (
         "gather_spores"
     )
+
+
+@pytest.mark.asyncio
+async def test_offener_vertrag_haelt_die_sperrliste_ein() -> None:
+    """Tree 2.3.7 (cosmergon#491): ``blocked`` also holds for contract moves."""
+    from cosmergon_pet.decider_tree import TreeDecider
+
+    state = _make_state(persona="scientist", energy=10_000)
+    state.pending_contracts = [{"contract_type": "alliance", "contract_id": "c-1"}]
+    action, _ = await TreeDecider().decide(state)
+    assert action == "accept_contract"
+    action, _ = await TreeDecider().decide(state, blocked=frozenset({"accept_contract"}))
+    assert action != "accept_contract"
