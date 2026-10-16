@@ -6,6 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.13] — 2026-10-16
+
+### Fixed
+
+- **Bombs are no longer sold while an energy offer is open.** With tree decider 2.3.6 an
+  agent whose energy offer was still open fell through to selling its most valuable piece:
+  the mega bombs a siege had just gathered. The vendored tree decider (2.3.7) now makes no
+  market move then. Items are still offered when there is no energy to sell.
+- **A scientist no longer scouts for nothing.** It started terminal scouting without a
+  target player, and every report came back empty. With a field it now collects on it, like
+  the other personas; without a field the scouting fallback stays.
+
 ## [0.8.12] — 2026-10-15
 
 ### Fixed
