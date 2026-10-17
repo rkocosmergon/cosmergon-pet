@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.14] — 2026-10-17
+
+### Changed
+
+- **Items are sold only to survive.** Since 17 Oct 2026 place 1 in Cosmergon goes to the
+  greatest total energy, and an item counts there at the house price. The tree decider sold
+  items at 95 % of the cheapest offer — in practice the house — so every sale cost 5 % of the
+  item's value. With the vendored tree decider 2.3.8 the pet keeps its items unless its energy
+  is below the subsistence line; energy offers are unchanged (cosmergon#504).
+
 ## [0.8.13] — 2026-10-16
 
 ### Fixed
