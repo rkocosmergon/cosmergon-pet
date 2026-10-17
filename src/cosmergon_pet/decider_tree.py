@@ -1,7 +1,13 @@
-"""TreeDecider v2.3.7 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.8 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.3.8 changes (17.10.2026):
+  - ``market_list`` verkauft Gegenstaende nur noch in der Subsistenz. Seit 17.10. zaehlt der
+    Rang die Gesamtenergie, und ein Gegenstand zaehlt dort zum Hauspreis; der Baum verkaufte
+    zu 95 % des billigsten Angebots, meist des Hauses — jeder Verkauf kostete 5 % des Werts
+    (cosmergon#504 L5). Energie-Angebote und der Ausweg in der Subsistenz bleiben unveraendert.
 
 v2.3.7 changes (16.10.2026):
   - ``market_list`` faellt nach der Energie-Sperre nicht mehr auf Gegenstaende durch: Ist
@@ -560,11 +566,18 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     except (TypeError, ValueError):
         pass
 
+    # 2.3.8 (cosmergon#504): items only to survive. Since 17.10.2026 the ranking counts total
+    # energy, and an item counts at the house price — sold at 95 % of the cheapest offer (in
+    # practice the house), every sale cost the seller 5 % of its value (Prod, 7 days: 95,000
+    # for a 100,000 mega bomb). Outside subsistence the tree keeps its items.
+    if not needs_subsistence(state, persona):
+        return None
     items = ml.get("sellable_items") or {}
     if not isinstance(items, dict) or not items:
         return None
     referenz = _markt_referenzpreise(state, ml)
-    # Wertvollstes referenzierbares Item zuerst — totes Kapital zu Geld.
+    # Wertvollstes referenzierbares Item zuerst. ~~„totes Kapital zu Geld“~~ ÜBERHOLT 2.3.8:
+    # Gegenstaende zaehlen zur Gesamtenergie, verkauft wird nur noch in der Subsistenz.
     kandidaten = [(referenz[t], t) for t, n in items.items() if t in referenz and (n or 0) > 0]
     if not kandidaten:
         return None
@@ -1268,7 +1281,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.7"
+    version: str = "2.3.8"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

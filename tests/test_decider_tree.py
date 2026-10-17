@@ -264,11 +264,15 @@ def test_market_list_energie_bei_ueberschuss() -> None:
 
 def test_market_list_item_mit_marktreferenz() -> None:
     """Kein Ueberschuss, aber gedecktes Inventar: 1 Item zu 95 % des
-    billigsten aktiven Listings desselben Typs."""
+    billigsten aktiven Listings desselben Typs.
+
+    2.3.8 (cosmergon#504 L5): verkauft wird nur noch in der Subsistenz — die Energie steht deshalb
+    unter der Schwelle (scientist ohne Feld: 2.000). ~~9.953~~ lag darueber.
+    """
     from cosmergon_pet.decider_tree import _market_list_plan
 
     state = _make_state(
-        energy=9_953,
+        energy=1_200,
         available_actions=_ml_actions(available=True, items={"mega_bomb": 7}),
     )
     state.world_briefing.market.buyable = [
@@ -426,7 +430,8 @@ def test_market_list_item_mit_server_referenzpreis() -> None:
 
     actions = _ml_actions(available=True, items={"mega_bomb": 7})
     actions["market_list"]["reference_prices"] = {"mega_bomb": 100_000.0}
-    state = _make_state(energy=9_953, available_actions=actions)
+    # 2.3.8: Energie unter der Subsistenz-Schwelle (siehe test_market_list_item_mit_marktreferenz).
+    state = _make_state(energy=1_200, available_actions=actions)
     # Briefing bewusst leer — der Serverpreis muss reichen.
     plan = _market_list_plan(state)
     assert plan == {
@@ -434,6 +439,42 @@ def test_market_list_item_mit_server_referenzpreis() -> None:
         "item_data": {"count": 1},
         "price_energy": 95_000,
     }
+
+
+@pytest.mark.asyncio
+async def test_ausserhalb_der_subsistenz_bleibt_die_bombe_im_inventar() -> None:
+    """2.3.8 (cosmergon#504 L5): die Gesamtenergie zaehlt die Bombe zum Hauspreis.
+
+    Ein Verkauf zu 95 % des billigsten Angebots kostete 5 % ihres Werts. Ohne verkaufbare
+    Energie, aber weit ueber der Subsistenz-Schwelle: kein Markt-Zug, der Baum waehlt etwas
+    anderes. Gegenprobe gegen 2.3.7: dort listet er die Bombe.
+    """
+    from cosmergon_pet.decider_tree import _market_list_plan, is_valid
+
+    actions = _ml_actions(available=True, energy=0, items={"mega_bomb": 1})
+    actions["market_list"]["reference_prices"] = {"mega_bomb": 100_000}
+    felder = [
+        SimpleNamespace(id=f"00000000-0000-0000-0000-00000000000{i}", active_cell_count=40)
+        for i in range(3)
+    ]
+    for kompass in ("explore", "cooperate", "trade", "attack", "autonomous"):
+        state = _make_state(energy=60_000, fields=felder, available_actions=actions, compass=kompass)
+        assert _market_list_plan(state) is None, kompass
+        assert is_valid(state, "market_list") is False
+        action, _ = await TreeDecider().decide(state)
+        assert action != "market_list", kompass
+
+
+def test_in_der_subsistenz_darf_die_bombe_gehen() -> None:
+    """2.3.8: Ueberleben schlaegt den Rang — unter der Schwelle bleibt der Verkauf der Ausweg."""
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    actions = _ml_actions(available=True, energy=0, items={"mega_bomb": 1})
+    actions["market_list"]["reference_prices"] = {"mega_bomb": 100_000}
+    state = _make_state(energy=1_200, available_actions=actions)
+    plan = _market_list_plan(state)
+    assert plan is not None and plan["item_type"] == "mega_bomb"
+    assert plan["price_energy"] == 95_000
 
 
 def test_propose_contract_nur_backend_typen_mit_pflicht_terms() -> None:
