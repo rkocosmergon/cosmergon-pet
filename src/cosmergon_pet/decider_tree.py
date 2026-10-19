@@ -898,13 +898,28 @@ def _resolve_start_mission(state: GameState, persona: str) -> dict[str, Any]:
                 "scout_terminal",
                 {"cube_id": str(cubes[0].id), "query_type": "wealth_estimate"},
             )
-    fields = _fields(state)
+    fields = _bereite_felder(state, _fields(state))
     if not fields:
         return {}
     return _mission_payload(
         "gather_spores",
         {"field_id": str(fields[0].id), "max_items": 10, "duration_ticks": 200},
     )
+
+
+def _bereite_felder(state: GameState, fields: list[Any]) -> list[Any]:
+    """v2.3.9 (cosmergon#529): nur Felder, auf denen der Server einen Start jetzt annimmt.
+
+    ``available`` gilt dem Hauptkoerper; ein Arena-Feld gehoert dem Turnierkoerper, und der
+    ist im Turnier oft beschaeftigt (Root-storm: 38/38 „on_mission“ im Turnier). Der Server
+    nennt die startbaren Felder in ``start_mission.ready_fields``. Fehlt die Liste (aelterer
+    Server), bleibt die Feldliste, wie sie ist.
+    """
+    fakten = (getattr(state, "available_actions", None) or {}).get("start_mission") or {}
+    bereit = fakten.get("ready_fields")
+    if bereit is None:
+        return fields
+    return [f for f in fields if str(f.id) in set(bereit)]
 
 
 def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, Any]:
@@ -1237,6 +1252,9 @@ def _decide_pending_contract(state: GameState, persona: str) -> tuple[str, dict[
         cid = c.get("contract_id") if isinstance(c, dict) else getattr(c, "contract_id", None)
         if not ctype or not cid:
             continue
+        # v2.3.9 (cosmergon#529): der Server sagt vorher, dass die Annahme scheitert (S253).
+        if isinstance(c, dict) and c.get("acceptable") is False:
+            return ("reject_contract", {"contract_id": str(cid)})
         decision = bias.get(ctype)
         if decision == "accept":
             return ("accept_contract", {"contract_id": str(cid), "escrow_amount": 0.0})
@@ -1281,7 +1299,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.8"
+    version: str = "2.3.9"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

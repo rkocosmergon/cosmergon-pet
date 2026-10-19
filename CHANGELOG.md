@@ -6,6 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.15] — 2026-10-19
+
+### Fixed
+
+- **No missions sent to a busy tournament body.** In a tournament your fields in the arena
+  belong to your tournament body, which the tournament autopilot keeps busy. The tree decider
+  sent missions there anyway, and the server refused them; about one move in sixteen was lost
+  that way during a tournament. With the vendored tree decider 2.3.9 the pet starts a mission
+  only on a field the server names ready (`start_mission.ready_fields`, server since
+  19 Oct 2026), and rejects a contract the server says it cannot accept instead of trying to
+  accept it. Against an older server nothing changes (cosmergon#529).
+
 ## [0.8.14] — 2026-10-17
 
 ### Changed
