@@ -6,6 +6,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.16] — 2026-10-24
+
+### Fixed
+
+- **Contracts that make the pet pay are rejected.** The tree decider accepted a contract
+  offer by its kind alone: a tribute the pet itself would pay, or an alliance with costs per
+  tick. Any player could take energy from a pet whose persona accepts tributes or alliances
+  that way. With the vendored tree decider 2.3.11 the pet rejects such an offer: a tribute
+  whose payer is the pet (in any spelling of its id) or cannot be read, and an alliance whose
+  `cost_per_tick` is not zero. Tributes the other side pays and free alliances are accepted
+  as before. The copy also brings tree 2.3.10: server facts in an unexpected form no longer
+  stop the decider (cosmergon#560, cosmergon#492).
+
 ## [0.8.15] — 2026-10-19
 
 ### Fixed

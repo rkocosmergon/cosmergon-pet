@@ -997,3 +997,32 @@ async def test_nicht_annehmbarer_vertrag_wird_abgelehnt() -> None:
     ]  # fmt: skip
     action, params = await TreeDecider().decide(state)
     assert (action, params) == ("reject_contract", {"contract_id": "c-1"})
+
+
+# --- Tree 2.3.11 (cosmergon#560): contracts that make the pet pay are rejected ---------------
+
+_ICH = "7d28a494-9365-4411-8c5e-3e16a7fc7de0"
+_ANDERER = "995a179c-1656-4d69-814c-cc34b06c2422"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("art", "terms", "zug"),
+    [
+        ("tribute", {"payer_id": _ICH.upper()}, "reject_contract"),
+        ("tribute", {}, "reject_contract"),
+        ("tribute", {"payer_id": _ANDERER}, "accept_contract"),
+        ("alliance", {"cost_per_tick": 5}, "reject_contract"),
+        ("alliance", {}, "accept_contract"),
+    ],
+)
+async def test_vertrag_der_mich_zahlen_laesst_wird_abgelehnt(
+    art: str, terms: dict[str, Any], zug: str
+) -> None:
+    """Up to tree 2.3.10 an offer was accepted by its kind alone: a tribute paid by the pet, an
+    alliance with costs per tick. Counter-check against the 2.3.9 copy: red."""
+    state = _make_state(persona="diplomat", energy=10_000)
+    state.agent_id = _ICH
+    state.pending_contracts = [{"contract_type": art, "contract_id": "c-1", "terms": terms}]
+    action, _ = await TreeDecider().decide(state)
+    assert action == zug

@@ -1,7 +1,22 @@
-"""TreeDecider v2.3.8 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.11 — Subsistenz + Persona-Charakter (GOBT-Pattern).
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
+
+v2.3.11 changes (24.10.2026, cosmergon#560, neunter Durchgang an Shikigon, Befund P1):
+  - Ein Vertragsangebot, das den Agenten zahlen laesst, lehnt der Baum ab, statt es nach seiner
+    Art anzunehmen: ein Tribut mit ihm als Zahler (Kennung wie der Server sie liest) oder ohne
+    lesbaren Zahler, ein Buendnis mit Kosten je Tick (``_kostet_mich``). Bis 2.3.10 konnte jeder
+    Spieler einem Agenten, dessen Persona Tribut oder Buendnis annimmt, so Energie abnehmen.
+
+v2.3.10 changes (23.10.2026, cosmergon#492, sechster Durchgang an Shikigon):
+  - Die Fakten des Servers (``available_actions``) liest der Baum in ihrer Form: ein Objekt,
+    eine Liste, eine endliche Zahl, sonst wie ein fehlendes Faktum (``_fakten``, ``_objekt``,
+    ``_liste``, ``_endlich``). Das SDK reicht diese Bloecke ungeprueft weiter; ein Wort, wo eine
+    Zahl stehen sollte (``int(stock)``), eine Liste statt eines Objekts oder ein Ziel ohne
+    ``field_id`` beendete bis 2.3.9 den Aufrufer, bei Shikigon das Gehirn bei jedem Zug.
+  - ``_bereite_felder`` bildet die Menge ``ready_fields`` einmal. Bis 2.3.9 entstand sie fuer
+    jedes Feld neu: Felder x startbare Felder, bei je 20.000 Eintraegen Minuten je Zug.
 
 v2.3.8 changes (17.10.2026):
   - ``market_list`` verkauft Gegenstaende nur noch in der Subsistenz. Seit 17.10. zaehlt der
@@ -145,6 +160,8 @@ repo, S171 5-voice panel + founder review 2026-05-08).
 from __future__ import annotations
 
 import logging
+import math
+import uuid
 from typing import Any
 
 from cosmergon_agent.state import GameState
@@ -242,6 +259,50 @@ FIELD_COST_SAFETY_MARGIN = 1.15  # v1.1.3-Erbe gegen Decide/Execute-Race
 # --- State-Accessors (defensive against missing fields) ----------------------
 
 
+def _objekt(wert: Any) -> dict[str, Any]:
+    """``wert``, wenn die Welt dort ein Objekt sendet, sonst ein leeres (2.3.10, cosmergon#492)."""
+    return wert if isinstance(wert, dict) else {}
+
+
+def _liste(wert: Any) -> list[Any]:
+    """``wert``, wenn die Welt dort eine Liste sendet, sonst eine leere."""
+    return wert if isinstance(wert, list) else []
+
+
+def _endlich(wert: Any) -> float | None:
+    """Eine endliche Zahl der Welt, sonst ``None``. Ein Wahrheitswert ist keine Zahl."""
+    if isinstance(wert, bool) or not isinstance(wert, int | float | str):
+        return None
+    try:
+        zahl = float(wert)
+    except (ValueError, OverflowError):
+        return None
+    return zahl if math.isfinite(zahl) else None
+
+
+def _zahl(wert: Any, ersatz: float = 0.0) -> float:
+    """``_endlich`` mit einem Ersatz fuer ein fehlendes oder unlesbares Faktum."""
+    zahl = _endlich(wert)
+    return ersatz if zahl is None else zahl
+
+
+def _fakten(state: GameState, action: str) -> dict[str, Any]:
+    """Was der Server zu einer Aktion sagt (``available_actions[action]``), immer ein Objekt.
+
+    Die eine Stelle, an der der Baum diese Bloecke liest: das SDK reicht sie ungeprueft
+    weiter, und bis 2.3.9 beendete ein Wort oder eine Liste an ihrer Stelle den Aufrufer."""
+    return _objekt(_objekt(getattr(state, "available_actions", None)).get(action))
+
+
+def _ziele(state: GameState) -> list[dict[str, Any]]:
+    """Die Ziele einer Eroberung (``claim_field.targets``), nur Objekte mit ``field_id``."""
+    return [
+        z
+        for z in _liste(_fakten(state, "claim_field").get("targets"))
+        if isinstance(z, dict) and z.get("field_id")
+    ]
+
+
 def _energy(state: GameState) -> float:
     return float(getattr(state, "energy", 0) or 0)
 
@@ -284,30 +345,18 @@ def _contract_targets(state: GameState) -> list[Any]:
 
 def _can_afford_field(state: GameState) -> bool:
     """Backend-truth via state.available_actions["create_field"], plus 15%-Margin."""
-    actions = getattr(state, "available_actions", None) or {}
-    create = actions.get("create_field") if isinstance(actions, dict) else None
-    if not isinstance(create, dict):
-        return False
-    next_cost = create.get("next_cost")
+    create = _fakten(state, "create_field")
+    next_cost = _endlich(create.get("next_cost"))
     if next_cost is not None:
-        try:
-            return _energy(state) >= float(next_cost) * FIELD_COST_SAFETY_MARGIN
-        except (TypeError, ValueError):
-            pass
+        return _energy(state) >= next_cost * FIELD_COST_SAFETY_MARGIN
     if "can_afford" in create:
         return bool(create["can_afford"])
     return False
 
 
 def _next_field_cost(state: GameState) -> float:
-    actions = getattr(state, "available_actions", None) or {}
-    create = actions.get("create_field") if isinstance(actions, dict) else None
-    if isinstance(create, dict) and create.get("next_cost") is not None:
-        try:
-            return float(create["next_cost"])
-        except (TypeError, ValueError):
-            return 500.0 * len(_fields(state))
-    return 500.0 * len(_fields(state))
+    next_cost = _endlich(_fakten(state, "create_field").get("next_cost"))
+    return 500.0 * len(_fields(state)) if next_cost is None else next_cost
 
 
 # --- Persona-spezifische preset-Wahl ----------------------------------------
@@ -379,8 +428,7 @@ def _start_mission_moeglich(state: GameState) -> bool:
     # immer ins Default. Die SERVER-Wahrheit steht seit v1.64.143 in
     # available_actions.start_mission.marauder_state; None heisst "Server
     # nennt sie nicht" (aelter) und bleibt durchlaessig wie bisher.
-    fakten = (getattr(state, "available_actions", None) or {}).get("start_mission") or {}
-    server_zustand = fakten.get("marauder_state")
+    server_zustand = _fakten(state, "start_mission").get("marauder_state")
     if server_zustand is not None and server_zustand != "recovery":
         return False
     if getattr(state, "my_mission", None) is not None:
@@ -397,8 +445,7 @@ def _server_verneint(state: GameState, action: str) -> bool:
     ``marauder_state != "recovery"`` liess Starts bei laufender Mission durch
     (der Koerper bleibt dabei in recovery). Fehlt das Feld (aelterer Server),
     sperrt nichts."""
-    fakten = (getattr(state, "available_actions", None) or {}).get(action)
-    return isinstance(fakten, dict) and fakten.get("available") is False
+    return _fakten(state, action).get("available") is False
 
 
 def is_valid(state: GameState, action: str) -> bool:
@@ -491,20 +538,16 @@ def _markt_referenzpreise(state: GameState, ml: dict[str, Any]) -> dict[str, flo
     Markt-Briefing traegt nur die 20 billigsten Listings insgesamt und laesst
     hochpreisige Typen wie mega_bomb unsichtbar). Fallback: das Briefing."""
     referenz: dict[str, float] = {}
-    server_ref = ml.get("reference_prices")
-    if isinstance(server_ref, dict):
-        for it, preis in server_ref.items():
-            try:
-                referenz[str(it)] = float(preis)
-            except (TypeError, ValueError):
-                continue
+    for it, preis in _objekt(ml.get("reference_prices")).items():
+        # 2.3.10: nur endliche Preise. NaN oder unendlich liess round() weiter unten werfen.
+        preis_f = _endlich(preis)
+        if preis_f is not None:
+            referenz[str(it)] = preis_f
     if not referenz:
         for b in _market_buyable(state):
             it = getattr(b, "item_type", None)
-            preis = getattr(b, "price_energy", None)
-            try:
-                preis_f = float(preis)
-            except (TypeError, ValueError):
+            preis_f = _endlich(getattr(b, "price_energy", None))
+            if preis_f is None:
                 continue
             if it and (it not in referenz or preis_f < referenz[it]):
                 referenz[it] = preis_f
@@ -516,10 +559,7 @@ def _energie_angebot_offen(ml: dict[str, Any]) -> bool:
 
     Fehlt der Schluessel (aelterer Server), gilt: nein — das Verhalten bleibt wie vor 2.3.6.
     """
-    try:
-        return int(ml.get("open_energy_listings") or 0) > 0
-    except (TypeError, ValueError):
-        return False
+    return _zahl(ml.get("open_energy_listings")) > 0
 
 
 def _market_list_plan(state: GameState) -> dict[str, Any] | None:
@@ -539,9 +579,8 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     persona = (getattr(state, "persona_type", None) or "scientist").lower()
     energy_price = _PERSONA_ENERGY_LIST_PRICE.get(persona, 450)
 
-    actions = getattr(state, "available_actions", None) or {}
-    ml = actions.get("market_list") if isinstance(actions, dict) else None
-    if not isinstance(ml, dict) or "sellable_energy" not in ml:
+    ml = _fakten(state, "market_list")
+    if "sellable_energy" not in ml:
         # Alter Server — keine Wahrheit verfügbar, altes Verhalten.
         if _energy(state) >= 1_500:
             return {"price_energy": energy_price}
@@ -550,21 +589,18 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     if not ml.get("available"):
         return None
 
-    try:
-        if float(ml.get("sellable_energy") or 0) > 0:
-            # 2.3.7 (cosmergon#491): an open energy offer stops the market move, it does not fall
-            # through to items. 2.3.6 fell through and sold the most valuable piece - the
-            # bombs a tournament chain had just gathered (13 of 14 in an hour). Items stay the
-            # way out for agents WITHOUT sellable energy (S297).
-            if _energie_angebot_offen(ml):
-                return None
-            # 2.3.5: no price of our own for energy. The amount offered grows with the
-            # balance (the server sets it), a fixed 400-500 did not: rich agents sold six-digit
-            # amounts of energy for 450. Without a price the server sets one that is never
-            # below what the seller gives away.
-            return {}
-    except (TypeError, ValueError):
-        pass
+    if _zahl(ml.get("sellable_energy")) > 0:
+        # 2.3.7 (cosmergon#491): an open energy offer stops the market move, it does not fall
+        # through to items. 2.3.6 fell through and sold the most valuable piece - the
+        # bombs a tournament chain had just gathered (13 of 14 in an hour). Items stay the
+        # way out for agents WITHOUT sellable energy (S297).
+        if _energie_angebot_offen(ml):
+            return None
+        # 2.3.5: no price of our own for energy. The amount offered grows with the
+        # balance (the server sets it), a fixed 400-500 did not: rich agents sold six-digit
+        # amounts of energy for 450. Without a price the server sets one that is never
+        # below what the seller gives away.
+        return {}
 
     # 2.3.8 (cosmergon#504): items only to survive. Since 17.10.2026 the ranking counts total
     # energy, and an item counts at the house price — sold at 95 % of the cheapest offer (in
@@ -578,7 +614,7 @@ def _market_list_plan(state: GameState) -> dict[str, Any] | None:
     referenz = _markt_referenzpreise(state, ml)
     # Wertvollstes referenzierbares Item zuerst. ~~„totes Kapital zu Geld“~~ ÜBERHOLT 2.3.8:
     # Gegenstaende zaehlen zur Gesamtenergie, verkauft wird nur noch in der Subsistenz.
-    kandidaten = [(referenz[t], t) for t, n in items.items() if t in referenz and (n or 0) > 0]
+    kandidaten = [(referenz[t], t) for t, n in items.items() if t in referenz and _zahl(n) > 0]
     if not kandidaten:
         return None
     kandidaten.sort(reverse=True)
@@ -638,11 +674,7 @@ def _cheapest_buyable(state: GameState, persona: str) -> Any | None:
         if allowed is not None:
             if getattr(b, "item_type", None) not in allowed:
                 continue
-        price = getattr(b, "price_energy", None)
-        try:
-            price_f = float(price) if price is not None else None
-        except (TypeError, ValueError):
-            continue
+        price_f = _endlich(getattr(b, "price_energy", None))
         if price_f is None or price_f > energy:
             continue
         candidates.append((price_f, b))
@@ -663,21 +695,24 @@ def _kauf_absichten(state: GameState) -> tuple[str, ...] | None:
     Vorrats-Gate war clientseitig strukturell unmoeglich (der State trug
     kein Inventar).
     """
-    verfuegbar = getattr(state, "available_actions", None) or {}
-    stock = (verfuegbar.get("market_buy") or {}).get("preset_stock")
+    stock = _fakten(state, "market_buy").get("preset_stock")
     if stock is None:
         return None
+    # 2.3.10: ein Vorrat, der keine Zahl ist, ist keiner, den der Baum lesen kann; er kauft
+    # dann nichts (nicht der Blindkauf des Legacy-Zweigs).
+    vorrat = _endlich(stock)
+    if vorrat is None:
+        return ()
     wuensche: list[str] = []
     # Saat-Nachschub: eigenes Feld vorhanden und Vorrat < 3 (Server-P3b-Grenze,
     # utility_selector._preset_absicht — dieselbe Zahl, dieselbe Bedeutung).
-    if _fields(state) and int(stock) < 3:
+    if _fields(state) and vorrat < 3:
         wuensche.append("preset")
     # Bomben fuer die Feldlos-Kette: Ziele sichtbar und Arsenal < 3 (dieselbe
     # Schwelle wie _feldlos_eroberungs_zug: siege ab 3) — der Kauf ist der
     # Beschleuniger des Sammelns, nicht sein Ersatz.
-    sm_fakten = verfuegbar.get("start_mission") or {}
-    ziele = (verfuegbar.get("claim_field") or {}).get("targets") or []
-    if not _fields(state) and ziele and int(sm_fakten.get("mega_bombs") or 0) < 3:
+    bomben = _zahl(_fakten(state, "start_mission").get("mega_bombs"))
+    if not _fields(state) and _ziele(state) and bomben < 3:
         wuensche.append("mega_bomb")
     return tuple(wuensche)
 
@@ -700,11 +735,8 @@ def _gewolltes_buyable(state: GameState, persona: str) -> Any | None:
     for b in _market_buyable(state):
         if getattr(b, "item_type", None) not in absichten:
             continue
-        try:
-            price_f = float(getattr(b, "price_energy", None))  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            continue
-        if price_f > energy:
+        price_f = _endlich(getattr(b, "price_energy", None))
+        if price_f is None or price_f > energy:
             continue
         candidates.append((price_f, b))
     if not candidates:
@@ -797,12 +829,10 @@ def _feldlos_eroberungs_zug(state: GameState) -> dict[str, Any] | None:
     — der Aufrufer faellt auf den S306-Scout-Weg zurueck. Schwelle 3 Bomben:
     eine reisst ~12 Loecher (verwundbar ab >5), zwei Reserven gegen Heilung.
     """
-    verfuegbar = getattr(state, "available_actions", None) or {}
-    sm_fakten = verfuegbar.get("start_mission") or {}
-    cf_fakten = verfuegbar.get("claim_field") or {}
-    bomben = int(sm_fakten.get("mega_bombs") or 0)
-    ziele = cf_fakten.get("targets") or []
-    loot = sm_fakten.get("richest_loot_field") or {}
+    sm_fakten = _fakten(state, "start_mission")
+    bomben = _zahl(sm_fakten.get("mega_bombs"))
+    ziele = _ziele(state)
+    loot = _objekt(sm_fakten.get("richest_loot_field"))
     if bomben >= 3 and ziele:
         return _mission_payload(
             "siege_field",
@@ -914,12 +944,16 @@ def _bereite_felder(state: GameState, fields: list[Any]) -> list[Any]:
     ist im Turnier oft beschaeftigt (Root-storm: 38/38 „on_mission“ im Turnier). Der Server
     nennt die startbaren Felder in ``start_mission.ready_fields``. Fehlt die Liste (aelterer
     Server), bleibt die Feldliste, wie sie ist.
+
+    2.3.10 (cosmergon#492): die Menge entsteht einmal, nur aus Zeichenketten. Bis 2.3.9 wurde sie
+    fuer jedes Feld neu gebildet (Felder x startbare Felder je Zug), und eine Liste darin, die
+    sich nicht in eine Menge legen laesst, beendete den Aufrufer.
     """
-    fakten = (getattr(state, "available_actions", None) or {}).get("start_mission") or {}
-    bereit = fakten.get("ready_fields")
+    bereit = _fakten(state, "start_mission").get("ready_fields")
     if bereit is None:
         return fields
-    return [f for f in fields if str(f.id) in set(bereit)]
+    startbar = {b for b in _liste(bereit) if isinstance(b, str)}
+    return [f for f in fields if str(f.id) in startbar]
 
 
 def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, Any]:
@@ -1237,6 +1271,32 @@ def _score_gegen_ziel(
 # --- Decision-Pipeline -------------------------------------------------------
 
 
+def _kennung(wert: Any) -> uuid.UUID | None:
+    """Eine Kennung, wie der Server sie liest (jede Schreibweise von ``uuid.UUID``), sonst ``None``."""
+    try:
+        return uuid.UUID(str(wert))
+    except ValueError:
+        return None
+
+
+def _kostet_mich(state: GameState, ctype: str, terms: Any) -> bool:
+    """2.3.11 (cosmergon#560): ein Angebot, das diesen Agenten zahlen laesst.
+
+    Ein Tribut, bei dem er zahlt oder der Zahler nicht zu lesen ist, und ein Buendnis mit
+    Kosten je Tick (auch unlesbaren). Dieselbe Regel wie Shikigon ``brain/contracts.py:_kind_costs``.
+    Die uebrigen Arten, die der Baum annimmt, bucht die Welt ohne Escrow nicht.
+    """
+    terms = _objekt(terms)
+    if ctype == "alliance":
+        wert = terms.get("cost_per_tick")
+        return wert is not None and _endlich(wert) != 0.0
+    if ctype == "tribute":
+        ich = _kennung(getattr(state, "agent_id", None))
+        zahler = _kennung(terms.get("payer_id"))
+        return ich is None or zahler is None or zahler == ich
+    return False
+
+
 def _decide_pending_contract(state: GameState, persona: str) -> tuple[str, dict[str, Any]] | None:
     """S204 — wenn pending contract addressed an mich, entscheide accept/reject.
 
@@ -1250,12 +1310,17 @@ def _decide_pending_contract(state: GameState, persona: str) -> tuple[str, dict[
     for c in pending:
         ctype = c.get("contract_type") if isinstance(c, dict) else getattr(c, "contract_type", None)
         cid = c.get("contract_id") if isinstance(c, dict) else getattr(c, "contract_id", None)
-        if not ctype or not cid:
+        # 2.3.10 (cosmergon#492): Art und Kennung als Zeichenkette; eine Liste als Art liess
+        # ``bias.get`` werfen (nicht hashbar).
+        if not isinstance(ctype, str) or not ctype or not isinstance(cid, str) or not cid:
             continue
         # v2.3.9 (cosmergon#529): der Server sagt vorher, dass die Annahme scheitert (S253).
         if isinstance(c, dict) and c.get("acceptable") is False:
             return ("reject_contract", {"contract_id": str(cid)})
         decision = bias.get(ctype)
+        terms = c.get("terms") if isinstance(c, dict) else getattr(c, "terms", None)
+        if decision == "accept" and _kostet_mich(state, ctype, terms):
+            return ("reject_contract", {"contract_id": str(cid)})
         if decision == "accept":
             return ("accept_contract", {"contract_id": str(cid), "escrow_amount": 0.0})
         if decision == "reject":
@@ -1299,7 +1364,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.9"
+    version: str = "2.3.11"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
