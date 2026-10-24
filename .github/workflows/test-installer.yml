@@ -35,7 +35,10 @@ on:
 
 jobs:
   installer-e2e:
-    runs-on: ubuntu-latest
+    # ubuntu-24.04, not ubuntu-latest: since Oct 2026 ubuntu-latest is Ubuntu 26, which no
+    # longer ships qemu-user-static; arm-runner-action installs it on the host and failed
+    # before the installer ran (run 40083121542, 24 Oct 2026).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
