@@ -6,6 +6,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.17] — 2026-10-27
+
+### Fixed
+
+- **Long press pauses the autopilot.** The display showed PAUSED while the tree or LLM loop
+  kept playing. Both loops now skip their move while the pet is paused. The long press pauses
+  the pet's autopilot, not the agent on the server: a server pause turns the body into a
+  ghost and locks resuming for about an hour. Header text and build guide say so (cos20 #587).
+- **Contract proposals of the LLM decider are accepted by the server.** It sent
+  `{"duration_ticks": 100}`, which the server rejected with "Missing required terms" every
+  time; it now sends the terms the tree decider sends.
+- **Screen 7 no longer freezes on an open outcome.** The server sends `outcome` as `null`
+  while it is open; the screen raised.
+- **The menu click runs the entry under the cursor.** The menu is rebuilt from the live
+  state, and the selection was a bare index: after a state poll between turning and clicking,
+  the click ended the pet with `IndexError` or ran another entry.
+- **`scripts/check-whitelist.sh` fails closed:** a path that is no git work tree exits 2
+  instead of reporting ALL CHECKS PASSED.
+
 ## [0.8.16] — 2026-10-24
 
 ### Fixed
