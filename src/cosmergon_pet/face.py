@@ -193,6 +193,9 @@ class PetState:
     current_screen: int = 0  # 0..7
     menu_open: bool = False
     menu_index: int = 0
+    # action_key des gewählten Eintrags: der State-Poll baut das Menü um,
+    # die Auswahl bleibt am Eintrag, nicht an der Position (#587).
+    menu_key: str | None = None
     compass_submenu: bool = False
     compass_index: int = 0
     paused: bool = False
@@ -580,11 +583,12 @@ def _render_last_action(ps: PetState, now: float) -> list[str]:
         if user:
             lines.append("---")
             action = decision.get("action", "?")
-            outcome = decision.get("outcome", "?")
+            # Server sendet outcome immer, bei offenem Ausgang als null (#587).
+            outcome = decision.get("outcome") or "?"
             lines.append(f"LLM:{action[:7]} {outcome[:7]}")
         else:
             action = decision.get("action", "?")
-            outcome = decision.get("outcome", "?")
+            outcome = decision.get("outcome") or "?"
             reasoning = decision.get("reasoning", "")
             lines.append(f"Action:  {action[:12]}")
             lines.append(f"Result:  {outcome[:12]}")
@@ -611,7 +615,7 @@ def _render_menu(ps: PetState) -> list[str]:
     else:
         header = "ACTIONS"
         items = build_menu(ps.game_state, ps.paused)
-        idx = ps.menu_index
+        idx = _menu_position(ps, items)
 
     lines = [header, "-" * 21]
     # Window around the current index (max 5 entries visible)
@@ -1003,6 +1007,18 @@ async def handle_event(event: str, ps: PetState, agent: CosmergonAgent, now: flo
         await _handle_longpress(ps, agent)
 
 
+def _menu_position(ps: PetState, items: list[tuple[str, str]]) -> int:
+    """Index of the selected entry in ``items`` (rebuilt from the live state).
+
+    Follows ``menu_key`` when the entry still exists; otherwise the old
+    position, clamped to the shorter list. Cursor and click share it.
+    """
+    keys = [key for _, key in items]
+    if ps.menu_key in keys:
+        return keys.index(ps.menu_key)
+    return min(ps.menu_index, len(items) - 1)
+
+
 def _handle_rotate(event: str, ps: PetState) -> None:
     direction = 1 if event == InputEvent.ROT_RIGHT else -1
     if ps.menu_open:
@@ -1011,7 +1027,8 @@ def _handle_rotate(event: str, ps: PetState) -> None:
             ps.compass_index = (ps.compass_index + direction) % n
         else:
             items = build_menu(ps.game_state, ps.paused)
-            ps.menu_index = (ps.menu_index + direction) % len(items)
+            ps.menu_index = (_menu_position(ps, items) + direction) % len(items)
+            ps.menu_key = items[ps.menu_index][1]
     else:
         ps.current_screen = (ps.current_screen + direction) % 8
 
@@ -1021,6 +1038,7 @@ async def _handle_click(ps: PetState, agent: CosmergonAgent, now: float) -> None
         if ps.current_screen == 0:
             ps.menu_open = True
             ps.menu_index = 0
+            ps.menu_key = None
         else:
             # Short click on other screens jumps back to screen 1
             ps.current_screen = 0
@@ -1037,8 +1055,8 @@ async def _handle_click(ps: PetState, agent: CosmergonAgent, now: float) -> None
         ps.menu_open = False
         return
 
-    items = build_menu(ps.game_state, ps.paused)
-    label, action_key = items[ps.menu_index]
+    menu_items = build_menu(ps.game_state, ps.paused)
+    label, action_key = menu_items[_menu_position(ps, menu_items)]
 
     if action_key == "compass":
         ps.compass_submenu = True
