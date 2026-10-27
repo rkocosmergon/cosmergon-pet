@@ -38,7 +38,7 @@ Controls:
     Short press       On screen 1: open action menu
                       In menu: execute selected action
                       Otherwise: jump back to screen 1
-    Long press >1s    Pause/resume agent (or leave the menu)
+    Long press >1s    Pause/resume the autopilot (or leave the menu)
 
 Screensaver:
     After 30 s of no input on screen 1 the display switches to a pair of
@@ -1247,6 +1247,7 @@ async def run_pet(
                     interval_s=llm_interval_s,
                     stop=stop,
                     on_decision=_on_llm_decision,
+                    paused=lambda: ps.paused,
                 )
             )
         elif tree_decider is not None:
@@ -1269,6 +1270,7 @@ async def run_pet(
                     interval_s=tree_interval_s,
                     stop=stop,
                     on_decision=_on_tree_decision,
+                    paused=lambda: ps.paused,
                 )
             )
 

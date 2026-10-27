@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -113,12 +114,14 @@ _SENSITIVE_PARAM_KEYS: frozenset[str] = frozenset(
 # but the Pet targets Maker (Free) usage, so we surface only the safe set.
 _FREE_CONTRACT_TYPES: tuple[str, ...] = ("non_aggression", "trade_agreement")
 
-# Default terms per contract type. Backend requires the field but accepts
-# any JSON object whose shape matches the contract semantics. We use a
-# conservative duration so a misclick doesn't lock the agent for long.
+# Default terms per contract type, the same as the rule tree's (`decider_tree.py`,
+# v2.1.3: duration 1000). The server checks the keys per type
+# (`contract_manager.validate_terms`): non_aggression needs `duration`, trade_agreement
+# `duration` and `fee_discount_pct`. The former `{"duration_ticks": 100}` was rejected
+# with "Missing required terms" on every proposal (cos20 #587).
 _CONTRACT_TERM_TEMPLATES: dict[str, dict[str, Any]] = {
-    "non_aggression": {"duration_ticks": 100},
-    "trade_agreement": {"duration_ticks": 100},
+    "non_aggression": {"duration": 1000},
+    "trade_agreement": {"fee_discount_pct": 10, "duration": 1000},
 }
 
 # Minimum balance before propose_contract is offered. Below this the
@@ -403,6 +406,7 @@ async def llm_decision_loop(
     interval_s: float = DEFAULT_INTERVAL_S,
     stop: asyncio.Event | None = None,
     on_decision: callable | None = None,  # type: ignore[type-arg]
+    paused: Callable[[], bool] | None = None,
 ) -> None:
     """Background loop: every ``interval_s``, ask provider, execute, repeat.
 
@@ -417,6 +421,9 @@ async def llm_decision_loop(
         on_decision: Optional callback ``(action, params, elapsed_s, success)``
             called after each decision attempt — useful for the Pet display
             to flash an "LLM acted" indicator.
+        paused: Optional callable; while it returns True the loop makes no move and
+            only waits for the next round. The Pet passes its pause switch (long press),
+            which stops the autopilot, not the agent on the server (cos20 #587).
     """
     stop = stop or asyncio.Event()
     # One instance for the whole loop — its counter decides when a missing
@@ -433,11 +440,12 @@ async def llm_decision_loop(
         interval_s,
     )
     while not stop.is_set():
-        try:
-            await _one_decision(agent, provider, on_decision, state_source)
-        except Exception:
-            # Catch-all: nothing in this loop is allowed to kill the Pet.
-            logger.warning("llm_decision_loop iteration failed", exc_info=True)
+        if paused is None or not paused():
+            try:
+                await _one_decision(agent, provider, on_decision, state_source)
+            except Exception:
+                # Catch-all: nothing in this loop is allowed to kill the Pet.
+                logger.warning("llm_decision_loop iteration failed", exc_info=True)
         # cosmergon#392: remember the tick this round ran in (fresh, not the cached
         # decision state) — the estimate below can be seconds early.
         runden_tick = await aktueller_tick(agent)

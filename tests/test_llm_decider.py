@@ -365,7 +365,14 @@ def test_propose_contract_offered_when_balance_and_targets() -> None:
     for c in pc:
         assert c["params"]["to_player_id"] == "p1"
         assert c["params"]["escrow_amount"] == 0
-        assert c["params"]["terms"] == {"duration_ticks": 100}
+        # Server keys per type (cos20 contract_manager.validate_terms), as the rule tree
+        assert (
+            c["params"]["terms"]
+            == {
+                "non_aggression": {"duration": 1000},
+                "trade_agreement": {"fee_discount_pct": 10, "duration": 1000},
+            }[c["params"]["contract_type"]]
+        )
         assert "Aldous" in c["label"]
 
 

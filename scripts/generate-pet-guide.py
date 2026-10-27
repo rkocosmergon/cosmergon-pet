@@ -371,7 +371,8 @@ def build() -> None:
     )
     story.append(
         Paragraph(
-            "<b>Long-press (\u22651 s)</b> to pause/resume, or to back out of the menu.",
+            "<b>Long-press (\u22651 s)</b> to pause/resume the autopilot, "
+            "or to back out of the menu.",
             S_BODY,
         )
     )

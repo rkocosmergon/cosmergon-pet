@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 from cosmergon_agent import CosmergonAgent
@@ -206,6 +207,7 @@ async def tree_decision_loop(
     interval_s: float = DEFAULT_INTERVAL_S,
     stop: asyncio.Event | None = None,
     on_decision: Any | None = None,
+    paused: Callable[[], bool] | None = None,
 ) -> None:
     """Background loop: every ``interval_s``, ask the tree decider, execute, repeat.
 
@@ -228,6 +230,9 @@ async def tree_decision_loop(
         stop: Optional event to terminate the loop cleanly.
         on_decision: Optional callback ``(action, params, elapsed_s, success)``
             — used by the Pet display to flash a "decider acted" indicator.
+        paused: Optional callable; while it returns True the loop makes no move and
+            only waits for the next round. The Pet passes its pause switch (long press),
+            which stops the autopilot, not the agent on the server (cos20 #587).
     """
     stop = stop or asyncio.Event()
     backoff = _Backoff()
@@ -246,11 +251,12 @@ async def tree_decision_loop(
     )
     while not stop.is_set():
         backoff.naechste_runde()
-        try:
-            await _one_tree_decision(agent, decider, on_decision, backoff, state_source)
-        except Exception:
-            # Catch-all: nothing in this loop is allowed to kill the Pet.
-            logger.warning("tree_decision_loop iteration failed", exc_info=True)
+        if paused is None or not paused():
+            try:
+                await _one_tree_decision(agent, decider, on_decision, backoff, state_source)
+            except Exception:
+                # Catch-all: nothing in this loop is allowed to kill the Pet.
+                logger.warning("tree_decision_loop iteration failed", exc_info=True)
         # cosmergon#392: remember the tick this round ran in (fresh, not the cached
         # decision state) — the estimate below can be seconds early.
         runden_tick = await aktueller_tick(agent)

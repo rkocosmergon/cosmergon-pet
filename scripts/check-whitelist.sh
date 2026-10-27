@@ -17,6 +17,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${1:-$(dirname "$SCRIPT_DIR")}"
 ERRORS=0
 
+# Ohne Git-Arbeitsbaum liefern `git ls-files`/`git grep` unten nichts, und jeder Abschnitt
+# meldete OK: ein falscher Pfad hiess „ALL CHECKS PASSED" (cos20 #587). Nicht pruefbar ist
+# kein Bestanden.
+if ! git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "FEHLER: '$REPO' ist kein Git-Arbeitsbaum — nicht pruefbar." >&2
+    exit 2
+fi
+
 echo "=== Cosmergon Pet Whitelist-Check: $REPO ==="
 echo ""
 
@@ -83,7 +91,7 @@ if HITS=$(git -C "$REPO" grep -nE "$INFRA_PATTERNS" -- . ':!scripts/check-whitel
         ERRORS=$((ERRORS + 1))
     fi
 fi
-if [ "$ERRORS" -lt 2 ]; then echo "  OK"; fi
+if git -C "$REPO" grep -nE "$INFRA_PATTERNS" -- . ':!scripts/check-whitelist.sh' 2>/dev/null | grep -q .; then :; else echo "  OK"; fi
 echo ""
 
 # ================================================================
