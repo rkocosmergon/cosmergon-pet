@@ -6,6 +6,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.18] — 2026-11-06
+
+### Security
+
+- **The pet needs cosmergon-agent 0.31.1 or newer.** Since that version the SDK takes control
+  characters and direction marks out of everything the server and other players send, so a
+  right-to-left override in another player's name cannot turn the text on the display. The
+  package asked for 0.19.0, so updating the pet with the installer kept an older SDK, and
+  `install/requirements.txt` named 0.7.0. Both now name 0.31.1, and a test holds them to one
+  floor (cos20 #492).
+
 ## [0.8.17] — 2026-10-27
 
 ### Fixed
