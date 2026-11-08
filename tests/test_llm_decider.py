@@ -773,3 +773,16 @@ def test_one_decision_without_state_does_not_ask_the_model() -> None:
     provider.decide.assert_not_awaited()
     agent.act.assert_not_awaited()
     assert callback_calls == []
+
+
+def test_market_list_uses_the_tree_plan_without_own_price() -> None:
+    """cos20 #654: the LLM path offered market_list at a fixed 400/450/500 with no amount; the
+    server then listed the whole surplus at that price. It now offers the tree's plan
+    (``_market_list_plan``): for energy no price of its own, the server sets amount and price."""
+    mod = _import_or_skip()
+    state = _make_state(energy=500_000.0)
+    state.persona_type = "trader"
+    state.available_actions = {"market_list": {"available": True, "sellable_energy": 400_000.0}}
+    zeilen = [c for c in mod._build_action_choices(state) if c["action"] == "market_list"]
+    assert len(zeilen) == 1
+    assert "price_energy" not in zeilen[0]["params"]

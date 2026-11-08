@@ -884,21 +884,16 @@ def _build_action_choices(state: Any) -> list[dict[str, Any]]:
                 )
             )
 
-    # market_list: offered when the agent has a meaningful energy surplus.
-    # Three price-tiers so the LLM picks based on its own urgency: cheap
-    # (400 = vagant floor — moves fast), market (450 — middle), patient
-    # (500 — accept slower fill for more value). Backend (S161, KAT-B)
-    # defaults item_type='energy' so we don't have to pass it.
-    energy = float(getattr(state, "energy", 0) or 0)
-    if energy >= 1500:
-        for price in (400.0, 450.0, 500.0):
-            choices.append(
-                _make_choice(
-                    "market_list",
-                    {"price_energy": price},
-                    f"market_list   price_energy={price}",
-                )
-            )
+    # market_list (cos20 #654): the tree's plan, one source for both deciders. For energy it
+    # carries no price of its own: the server sets amount and price (never below what the
+    # seller gives away, cosmergon#477). A fixed 400/450/500 sold six-digit surpluses for 450.
+    from cosmergon_pet.decider_tree import _market_list_plan
+
+    energy = float(getattr(state, "energy", 0) or 0)  # read by market_buy below
+    plan = _market_list_plan(state)
+    if plan is not None:
+        teile = "  ".join(f"{k}={v}" for k, v in plan.items()) or "(server sets amount and price)"
+        choices.append(_make_choice("market_list", plan, f"market_list   {teile}"))
 
     # market_buy: one branch per affordable listing. Uses
     # state.world_briefing.market.buyable from backend ≥ v1.60.866 — the

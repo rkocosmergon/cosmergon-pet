@@ -6,6 +6,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The LLM decider no longer gives energy away on the market.** It offered `market_list` at a
+  fixed 400, 450 or 500 without an amount, and the server then listed the whole surplus at that
+  price. It now offers the rule tree's plan: for energy no price of its own, the server sets
+  amount and price. An open energy offer of your own stops the market move, as in the tree.
+
 ## [0.8.18] — 2026-11-06
 
 ### Security
