@@ -6,6 +6,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.19] — 2026-11-08
+
 ### Fixed
 
 - **The LLM decider no longer gives energy away on the market.** It offered `market_list` at a
