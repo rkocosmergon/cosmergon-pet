@@ -1,4 +1,7 @@
-"""TreeDecider v2.3.11 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.3.12 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+
+v2.3.12 changes (09.11.2026, cosmergon#673): Vertragsvorschlaege meiden Ziele, deren ``lehnt_ab``
+den Vertragstyp nennt (Server seit v1.65.776, SDK 0.31.5). Lehnen alle ab, kein Vorschlag.
 
 VENDORED from ``cosmergon-decider-tree`` (private cosmergon repo,
 ``research/decider-cluster/decider-tree/``).
@@ -341,6 +344,19 @@ def _market_buyable(state: GameState) -> list[Any]:
 def _contract_targets(state: GameState) -> list[Any]:
     wb = getattr(state, "world_briefing", None)
     return list(getattr(wb, "contract_targets", ()) or []) if wb is not None else []
+
+
+def _annehmendes_ziel(targets: list[Any], contract_type: str) -> Any | None:
+    """v2.3.12 (cosmergon#673): das erste Ziel, das ``contract_type`` nicht immer ablehnt.
+
+    Der Server nennt je Ziel ``lehnt_ab`` (aus der Persona-Tabelle). Vorher nahm der Baum
+    ``targets[0]`` und schlug Kriegern Nichtangriff vor: 141 Ablehnungen in 24 h bei einem Agenten,
+    jede kostet Ruf. Aeltere SDKs/Server liefern das Feld nicht — dann gilt jedes Ziel.
+    """
+    for ziel in targets:
+        if contract_type not in (getattr(ziel, "lehnt_ab", ()) or ()):
+            return ziel
+    return None
 
 
 def _can_afford_field(state: GameState) -> bool:
@@ -800,7 +816,6 @@ def _resolve_propose_contract(state: GameState, persona: str) -> dict[str, Any]:
     targets = _contract_targets(state)
     if not targets:
         return {}
-    target = targets[0]
     contract_plan = {
         "scientist": ("non_aggression", {"duration": 1000}),
         "trader": ("trade_agreement", {"fee_discount_pct": 10, "duration": 1000}),
@@ -810,6 +825,9 @@ def _resolve_propose_contract(state: GameState, persona: str) -> dict[str, Any]:
         "expansionist": ("non_aggression", {"duration": 1000}),
     }
     contract_type, terms = contract_plan.get(persona, ("non_aggression", {"duration": 1000}))
+    target = _annehmendes_ziel(targets, contract_type)
+    if target is None:  # alle lehnen ab: kein Vorschlag, der nur Ruf kostet
+        return {}
     return {
         "to_player_id": str(target.player_id),
         "contract_type": contract_type,
@@ -983,12 +1001,16 @@ def _resolve_propose_from_template(state: GameState, persona: str) -> dict[str, 
         "expansionist": t08,
     }
     template_id, extra_slots = template_by_persona.get(persona, t08)
+    art = "trade_agreement" if template_id == t07[0] else "non_aggression"
+    ziel = _annehmendes_ziel(targets, art)
+    if ziel is None:
+        return {}
     return {
         "params": {
             "template_id": template_id,
             "mode": "targeted",
             "slots": {
-                "partner_id": str(targets[0].player_id),
+                "partner_id": str(ziel.player_id),
                 "duration": 1000,
                 **extra_slots,
             },
@@ -1364,7 +1386,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.11"
+    version: str = "2.3.12"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

@@ -1026,3 +1026,27 @@ async def test_vertrag_der_mich_zahlen_laesst_wird_abgelehnt(
     state.pending_contracts = [{"contract_type": art, "contract_id": "c-1", "terms": terms}]
     action, _ = await TreeDecider().decide(state)
     assert action == zug
+
+
+def test_vorschlag_meidet_ziele_die_ablehnen_673() -> None:
+    """cosmergon#673 (Regelbaum 2.3.12): der Baum nahm targets[0] und schlug Kriegern
+    Nichtangriff vor (Ablehnung garantiert, Ruf sinkt). Mit ``lehnt_ab`` waehlt er das erste
+    Ziel, das annimmt; lehnen alle ab, schlaegt er nichts vor. Ohne das Feld bleibt es beim
+    ersten."""
+    from cosmergon_pet.decider_tree import resolve_action_params
+
+    krieger = SimpleNamespace(player_id="k", lehnt_ab=("alliance", "non_aggression"))
+    bauer = SimpleNamespace(player_id="b", lehnt_ab=("mercenary",))
+    alt = SimpleNamespace(player_id="alt")  # ohne Feld
+
+    state = _make_state(persona="warrior")
+    state.world_briefing.contract_targets = [krieger, bauer]
+    assert resolve_action_params(state, "propose_contract", "warrior")["to_player_id"] == "b"
+    vorlage = resolve_action_params(state, "propose_from_template", "warrior")
+    assert vorlage["params"]["slots"]["partner_id"] == "b"
+
+    state.world_briefing.contract_targets = [krieger]
+    assert resolve_action_params(state, "propose_contract", "warrior") == {}
+
+    state.world_briefing.contract_targets = [alt]
+    assert resolve_action_params(state, "propose_contract", "warrior")["to_player_id"] == "alt"

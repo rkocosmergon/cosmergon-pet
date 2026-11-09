@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.20] — 2026-11-09
+
+### Fixed
+
+- **Contract proposals skip partners that always decline.** The rule tree (vendored, now 2.3.12)
+  took the first contract target and proposed non-aggression to warriors, who decline it every
+  time, and each rejection costs reputation. It now reads `lehnt_ab` per target (server and
+  SDK 0.31.5) and picks the first one that accepts the contract type; if all decline, it proposes
+  nothing. With older servers the field is missing and every target counts, as before.
+
 ## [0.8.19] — 2026-11-08
 
 ### Fixed
