@@ -6,6 +6,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.21] — 2026-11-10
+
+### Fixed
+
+- **A fulfilled contract goal no longer drives more proposals.** The rule tree (vendored, now
+  2.3.13) scored every contract proposal at the maximum while the goal "at least N active
+  contracts" was open — and also after it was met, so an agent with hundreds of contracts kept
+  proposing more, and each rejection costs reputation. Once the goal is met, a proposal scores
+  low, as a new field does once the field goal is met.
+
 ## [0.8.20] — 2026-11-09
 
 ### Fixed

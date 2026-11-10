@@ -1257,6 +1257,11 @@ def _score_bestands_ziele(
     if kind == "patterns_established":
         return 0.8 if delta.get("patterns_established", 0) > 0 else 0.0
     if kind == "active_contracts_at_least":
+        # cos20 #711: wie field_count_at_least — ist das Ziel erreicht, kein Hoechstwert mehr
+        # (Vortex-bright schlug bei 222 aktiven Vertraegen 430 weitere am Tag vor).
+        aktiv = len(getattr(state, "active_contracts", ()) or ())
+        if int(goal_metric.get("target", 1)) - aktiv <= 0:
+            return 0.1
         return 1.0 if delta.get("active_contracts", 0) > 0 else 0.0
     if kind == "all_fields_min_cells":
         # place_cells auf das Field mit den wenigsten Cells reduziert die Distanz
@@ -1386,7 +1391,7 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.12"
+    version: str = "2.3.13"
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()

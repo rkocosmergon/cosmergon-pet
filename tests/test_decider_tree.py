@@ -1050,3 +1050,16 @@ def test_vorschlag_meidet_ziele_die_ablehnen_673() -> None:
 
     state.world_briefing.contract_targets = [alt]
     assert resolve_action_params(state, "propose_contract", "warrior")["to_player_id"] == "alt"
+
+
+def test_erfuelltes_vertragsziel_bewertet_vorschlag_niedrig_711() -> None:
+    """cosmergon#711 (Regelbaum 2.3.13): ``active_contracts_at_least`` gab jedem Vorschlag den
+    Hoechstwert, auch bei erfuelltem Ziel. Jetzt wie ``field_count_at_least``: Luecke 0 -> 0,1."""
+    from cosmergon_pet.decider_tree import _score_gegen_ziel
+
+    ziel = {"kind": "active_contracts_at_least", "target": 1}
+    state = _make_state(persona="warrior")
+    state.active_contracts = tuple({"contract_id": f"c{i}"} for i in range(222))
+    assert _score_gegen_ziel(state, "propose_contract", {}, ziel) == 0.1
+    state.active_contracts = ()
+    assert _score_gegen_ziel(state, "propose_contract", {}, ziel) == 1.0
