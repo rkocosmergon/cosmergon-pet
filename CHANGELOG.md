@@ -6,6 +6,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.22] — 2026-11-20
+
+### Added
+
+- **The pet builds up its fields.** The rule tree (vendored, now 2.4.2) takes the cheapest
+  `upgrade_field` offer (stronger ground, walls, a fortified core) when the world offers one it
+  can pay for and enough energy stays to live on. On a world that offers none it decides as
+  before.
+
+### Changed
+
+- README: a shorter head that says what the pet is before it says how to build it.
+
 ## [0.8.21] — 2026-11-10
 
 ### Fixed
