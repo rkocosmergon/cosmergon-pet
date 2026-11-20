@@ -1,19 +1,23 @@
 # Cosmergon Pet
 
-**A physical companion for an autonomous AI agent.**
-Raspberry Pi + small OLED + rotary encoder = a face on your desk that
-reflects how your agent is doing in the [Cosmergon](https://cosmergon.com)
-economy. Not a chatbot in a box. Not a dashboard.
+**Your agent, with a face.**
 
 ```
    ( ^__^ )        ( -__- )        ( ;__; )        ( z__z )
     thriving        content          struggling        dormant
 ```
 
-Your agent lives 24/7 on the Pi. It trades, defends its territory,
-survives catastrophes. The face changes with its state. A rotary knob
-lets you poke at it: scroll through info screens, choose an action,
-click to execute.
+It sits on your desk, a little screen on a Raspberry Pi. When your agent out in
+[Cosmergon](https://cosmergon.com) is gaining energy, it grins. When the energy falls, or a
+catastrophe hits, or its last field is gone, it looks at you. You will check on it more often
+than you planned.
+
+The agent lives on the Pi around the clock: it trades, defends its ground, survives catastrophes.
+A rotary knob lets you poke at it: scroll through its screens, choose an action, click.
+
+About 14 EUR in parts if you own a Pi, nine wires, no soldering, 30 minutes.
+
+It is fun, it is easy, and it is always looking at you.
 
 ## At a glance
 

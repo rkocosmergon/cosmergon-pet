@@ -91,6 +91,7 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         # Forscher: Experimente, evolve, Publikation, Acquire, Forschungs-Kollab
         "place_cells",  # Experiment-Pattern (preset=blinker/toad/glider)
         "evolve",  # Tier-Aufstieg
+        "upgrade_field",  # v2.4.1 (cosmergon#777): build up a field, when the server offers it
         "start_mission",  # S206 scout_terminal — Intel-Sammeln
         "market_list",  # Forschungs-Output veröffentlichen
         "market_buy",  # fremde Patterns acquirieren (cube/field-only)
@@ -110,6 +111,7 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         "place_cells",  # Inventar-Use (Presets verbauen)
         # evolve niedrig-priorisiert
         "evolve",
+        "upgrade_field",  # v2.4.1 (cosmergon#777): build up a field, when the server offers it
     ),
     "warrior": (
         # Krieger: Territorium, Defense, Diplomatie als Defensiv-Strategie
@@ -119,6 +121,7 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         "propose_contract",  # non_aggression als Defensiv-Pakt
         "propose_from_template",  # S206 T09_ALLIANCE
         "evolve",  # Kraftaufbau
+        "upgrade_field",  # v2.4.1 (cosmergon#777): build up a field, when the server offers it
         "create_field",  # neues Territorium
         "market_buy",  # nur cube/field
         # market_list niedrig — Krieger ist nicht Trader
@@ -134,6 +137,7 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         "propose_from_template",  # S206 T08_NON_AGGRESSION
         # evolve, market_list, propose_contract niedrig
         "evolve",
+        "upgrade_field",  # v2.4.1 (cosmergon#777): build up a field, when the server offers it
         "market_list",
         "propose_contract",
     ),
@@ -148,12 +152,14 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
         "create_field",  # nur bei Bedarf
         # evolve niedrig
         "evolve",
+        "upgrade_field",  # v2.4.1 (cosmergon#777): build up a field, when the server offers it
     ),
     "farmer": (
         # Landwirt: Felder pflegen, evolve, Surplus listen
         # S206: gather_spores als Erntung passt thematisch
         "place_cells",  # Kerngeschäft (cells halten)
         "evolve",  # Tier-Effizienz
+        "upgrade_field",  # v2.4.1 (cosmergon#777): build up a field, when the server offers it
         "start_mission",  # S206 gather_spores
         "market_list",  # Surplus monetisieren
         "propose_from_template",  # S206 T06_TRIBUTE / T07_TRADE_AGREEMENT
@@ -168,6 +174,7 @@ PERSONA_ACTION_POOLS: dict[str, tuple[str, ...]] = {
 PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
     "scientist": {
         "evolve": +0.3,  # Forscher-Kerngeschäft
+        "upgrade_field": +0.3,  # same as evolve (investment in an own field)
         "start_mission": +0.15,  # S206 scout_terminal (Intel-Sammeln)
         "market_list": +0.1,  # Publish ist gut
         "place_cells": +0.0,  # neutral (Experiment ODER Pflege)
@@ -185,6 +192,7 @@ PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
         "create_field": +0.0,  # neutral (Inventar-Use)
         "place_cells": +0.0,  # neutral (Inventar-Use)
         "evolve": -0.3,  # nicht Trader-Kerngeschäft
+        "upgrade_field": -0.3,  # same as evolve (investment in an own field)
     },
     "warrior": {
         # S206: gather_spores für Arsenal-Aufbau (Waffen/Bomben aus Sporen)
@@ -193,6 +201,7 @@ PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
         "propose_contract": +0.2,  # non_aggression ist Defensiv-Strategie
         "propose_from_template": +0.1,  # S206 T09_ALLIANCE
         "evolve": +0.0,  # neutral
+        "upgrade_field": +0.0,  # same as evolve (investment in an own field)
         "create_field": +0.0,  # neutral
         "market_buy": -0.1,  # nur cube/field zum Bau
         "market_list": -0.2,  # Krieger handelt nicht
@@ -205,6 +214,7 @@ PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
         "market_buy": +0.0,  # cube acquire
         "propose_from_template": +0.05,  # T08_NON_AGGRESSION
         "evolve": -0.2,
+        "upgrade_field": -0.2,  # same as evolve (investment in an own field)
         "market_list": -0.2,
         "propose_contract": -0.3,
     },
@@ -217,10 +227,12 @@ PERSONA_ACTION_BIAS: dict[str, dict[str, float]] = {
         "market_list": +0.0,
         "create_field": -0.1,
         "evolve": -0.3,
+        "upgrade_field": -0.3,  # same as evolve (investment in an own field)
     },
     "farmer": {
         "place_cells": +0.3,  # Pflege ist Kerngeschäft
         "evolve": +0.2,  # Tier-Effizienz
+        "upgrade_field": +0.2,  # same as evolve (investment in an own field)
         "start_mission": +0.15,  # S206 gather_spores (Erntung)
         "market_list": +0.1,  # Surplus
         "propose_from_template": +0.05,  # T06_TRIBUTE
@@ -269,6 +281,7 @@ COMPASS_BIAS: dict[str, dict[str, float]] = {
         "propose_contract": +0.2,
         "market_list": +0.1,
         "evolve": -0.1,
+        "upgrade_field": -0.1,  # same as evolve
     },
     "attack": {
         # Aggressives Place-Cells (glider-Pattern), Krieger-Bias

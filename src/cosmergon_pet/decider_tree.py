@@ -1,4 +1,24 @@
-"""TreeDecider v2.3.12 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+"""TreeDecider v2.4.2 — Subsistenz + Persona-Charakter (GOBT-Pattern).
+
+v2.4.2 note (20.11.2026, cosmergon#777): an ``upgrade_field`` offer names its place as text
+(``"at": "s:8:8"``), as the server sends it. 2.4.1 expected an integer, dropped every offer with
+a place, and so never built up a field in production.
+
+v2.4.1 note (20.11.2026, cosmergon#777): ``upgrade_field`` (build up a field: segments, walls,
+towers). The server lists the offers in ``available_actions.upgrade_field`` (``available`` and
+``offers``, cheapest first). The tree takes the cheapest offer when the server says
+``available`` and the balance still covers the subsistence threshold after the price. Without
+the block (older server) or with ``available: false`` it decides exactly as before. 2.4.0 was
+never published; its content (learning from own experience with a store, unchanged without
+one) goes out with 2.4.1.
+
+v2.4.0 note (15.11.2026, cosmergon#765, Betreuer-Durchgang Shikigon c6f552f, B6): Der Kauf-Kern
+(``_billigstes_angebot``, beide Zweige) kauft eine Art nur bis zu ihrem Hauspreis, wenn die Welt
+``market_buy.house_prices`` nennt (Server ab cosmergon#765). Eine Art, die dort fehlt oder keinen
+Preis > 0 hat, kauft er nicht; ist das Feld kein Objekt, kauft er nichts. Bis 2.3.13 bekam der
+Spieler, dessen Angebot das einzige seiner Art war, bis zur ganzen Energie des Agenten. Nennt die
+Welt das Feld nicht (aelterer Server): wie 2.3.13. Vorab am 15.11.2026 als 2.3.14 aus dem
+oeffentlichen Repo ``cosmergon-decider-tree`` veroeffentlicht.
 
 v2.3.12 changes (09.11.2026, cosmergon#673): Vertragsvorschlaege meiden Ziele, deren ``lehnt_ab``
 den Vertragstyp nennt (Server seit v1.65.776, SDK 0.31.5). Lehnen alle ab, kein Vorschlag.
@@ -165,6 +185,7 @@ from __future__ import annotations
 import logging
 import math
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from cosmergon_agent.state import GameState
@@ -188,6 +209,7 @@ VALID_ACTIONS: frozenset[str] = frozenset(
     {
         "place_cells",
         "evolve",
+        "upgrade_field",
         "create_field",
         "create_cube",
         "transfer_energy",
@@ -429,6 +451,45 @@ def _evolve_moeglich(state: GameState) -> bool:
     return False
 
 
+def _billigstes_ausbau(state: GameState) -> tuple[dict[str, Any], float] | None:
+    """2.4.1 (cosmergon#777): the cheapest ``upgrade_field`` offer the tree may take, with its price.
+
+    The ONE core for is_valid, resolver and delta. ``None``: the server does not offer the move
+    (block missing = older server, ``available`` not true, no usable offer) or the balance after
+    the price would fall below the subsistence threshold (the same reserve that sends the tree
+    into the subsistence pool; the move is not in that pool). Params: ``field_id``, ``set`` and
+    ``at`` only when the offer carries it."""
+    block = _fakten(state, "upgrade_field")
+    if block.get("available") is not True:
+        return None
+    best: tuple[float, dict[str, Any]] | None = None
+    for offer in _liste(block.get("offers")):
+        if not isinstance(offer, dict):
+            continue
+        field_id, set_name = offer.get("field_id"), offer.get("set")
+        price = _endlich(offer.get("price"))
+        if not isinstance(field_id, str) or not field_id:
+            continue
+        if not isinstance(set_name, str) or not set_name or price is None or price < 0:
+            continue
+        params: dict[str, Any] = {"field_id": field_id, "set": set_name}
+        at = offer.get("at")
+        if at is not None:
+            # 2.4.2: the server names the place as text ("s:8:8"); 2.4.1 expected an integer
+            # and so dropped every offer that carried a place.
+            if not isinstance(at, str) or not at:
+                continue
+            params["at"] = at
+        if best is None or price < best[0]:
+            best = (price, params)
+    if best is None:
+        return None
+    persona = (getattr(state, "persona_type", None) or "scientist").lower()
+    if _energy(state) - best[0] < subsistence_threshold(persona, state):
+        return None
+    return best[1], best[0]
+
+
 def _market_buy_moeglich(state: GameState) -> bool:
     """Gibt es einen Kauf MIT Absicht (v2.3.1 — ohne Absicht keinen)?"""
     persona = (getattr(state, "persona_type", None) or "scientist").lower()
@@ -464,6 +525,27 @@ def _server_verneint(state: GameState, action: str) -> bool:
     return _fakten(state, action).get("available") is False
 
 
+# Züge, die der Baum nie von sich aus wählt (bis 2.4.0 je ein eigener Zweig in ``is_valid``):
+# ``transfer_energy`` steht nicht im Action-Pool (v2.0.0). Die Item-Pickups (S206) brauchen
+# Spore-/Drop-ID und Abstandsprüfung, die ein Pet ohne Marauder-Position nicht hat; der Nutzer
+# löst sie von Hand oder über den LLM-Decider aus. ``place_deployable`` braucht Inventar und
+# Marauder-Position. ``claim_field`` (Marauder am verwundbaren Ziel), ``heal_holes`` und
+# ``terminal_query`` (Marauder am Terminal) sind Sache des Missions-Pfads.
+_NICHT_BAUM_AUTONOM = frozenset(
+    {
+        "transfer_energy",
+        "collect_spore",
+        "shoot_spore",
+        "pickup_drop",
+        "transfer_inventory",
+        "place_deployable",
+        "claim_field",
+        "heal_holes",
+        "terminal_query",
+    }
+)
+
+
 def is_valid(state: GameState, action: str) -> bool:
     """Vor-Backend-Validity-Check. Verhindert dass Tree eine Action wählt,
     die das Backend mit 400 ablehnen würde."""
@@ -488,6 +570,9 @@ def is_valid(state: GameState, action: str) -> bool:
     if action == "evolve":
         return _evolve_moeglich(state)
 
+    if action == "upgrade_field":
+        return _billigstes_ausbau(state) is not None
+
     if action == "market_buy":
         return _market_buy_moeglich(state)
 
@@ -501,33 +586,13 @@ def is_valid(state: GameState, action: str) -> bool:
     if action == "propose_contract":
         return len(_contract_targets(state)) > 0 and _energy(state) >= 5_000
 
-    if action == "transfer_energy":
-        return False  # nicht in v2.0.0-Action-Pool
-
     # S206 Marauder-Mission-System Phase 2.
     if action == "start_mission":
         return _start_mission_moeglich(state)
     if action == "cancel_mission":
         return getattr(state, "my_mission", None) is not None
 
-    # S206 Item-Pickups: Pet ohne Marauder-Position-State kann das nicht
-    # autonom triggern (braucht Spore-/Drop-ID + Distance-Check). Tree-Decider
-    # lässt das aus, Pet-User triggert manuell oder via LLM-Decider.
-    if action in ("collect_spore", "shoot_spore", "pickup_drop", "transfer_inventory"):
-        return False  # nicht Tree-autonom
-
-    if action == "place_deployable":
-        # Braucht Inventory + Marauder-Position — Tree-Decider lässt das aus.
-        return False
-
-    if action == "claim_field":
-        # Capture braucht Marauder am vulnerable Target — Mission-Pfad-Domäne.
-        return False
-    if action == "heal_holes":
-        # Eigenes Field mit hole_count > 0 + Energy. Mission-Pfad bevorzugt.
-        return False
-    if action == "terminal_query":
-        # Braucht Marauder am Cube-Center-Terminal — Mission-Pfad.
+    if action in _NICHT_BAUM_AUTONOM:
         return False
     if action == "propose_from_template":
         return len(_contract_targets(state)) > 0 and _energy(state) >= 5_000
@@ -682,22 +747,47 @@ def _cheapest_evolvable_field(state: GameState) -> Any | None:
     return eligible[0][1]
 
 
-def _cheapest_buyable(state: GameState, persona: str) -> Any | None:
-    allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
+def _hauspreise(state: GameState) -> dict[str, Any] | None:
+    """2.3.14 (cosmergon#765): ``market_buy.house_prices`` — je Art der Preis, zu dem das Haus sie
+    anbietet. ``None`` heisst: die Welt nennt das Feld nicht (aelterer Server), der Aufrufer
+    bleibt beim Verhalten von 2.3.13 (Durchlaessigkeit wie bei ``preset_stock``). Ist das Feld
+    da, aber kein Objekt, ist es ein leeres: keine Art hat einen Hauspreis, nichts wird gekauft."""
+    block = _fakten(state, "market_buy")
+    if "house_prices" not in block:
+        return None
+    return _objekt(block["house_prices"])
+
+
+def _billigstes_angebot(state: GameState, art_passt: Callable[[Any], bool]) -> Any | None:
+    """Der EINE Preis-Kern beider Zweige (2.3.14, cosmergon#765): das billigste Angebot einer Art,
+    die ``art_passt``, bezahlbar mit der ganzen Energie — und, wenn die Welt Hauspreise nennt,
+    nur bis zum Hauspreis der Art. Vorher nahm der Baum das einzige Angebot einer Art von jedem
+    Spieler bis zur ganzen Energie; ``reference_prices`` taugt nicht als Grenze, denn das
+    billigste Fremdangebot ist genau das Angebot, das geprueft wird."""
     energy = _energy(state)
+    hauspreise = _hauspreise(state)
     candidates = []
     for b in _market_buyable(state):
-        if allowed is not None:
-            if getattr(b, "item_type", None) not in allowed:
-                continue
+        art = getattr(b, "item_type", None)
+        if not art_passt(art):
+            continue
         price_f = _endlich(getattr(b, "price_energy", None))
         if price_f is None or price_f > energy:
             continue
+        if hauspreise is not None:
+            grenze = _endlich(hauspreise.get(art)) if isinstance(art, str) else None
+            if grenze is None or grenze <= 0 or price_f > grenze:
+                continue
         candidates.append((price_f, b))
     if not candidates:
         return None
     candidates.sort(key=lambda p: p[0])
     return candidates[0][1]
+
+
+def _cheapest_buyable(state: GameState, persona: str) -> Any | None:
+    allowed = PERSONA_BUYABLE_TYPES.get(persona, ("cube", "field"))
+    return _billigstes_angebot(state, lambda art: allowed is None or art in allowed)
 
 
 def _kauf_absichten(state: GameState) -> tuple[str, ...] | None:
@@ -746,19 +836,7 @@ def _gewolltes_buyable(state: GameState, persona: str) -> Any | None:
         return _cheapest_buyable(state, persona)
     if not absichten:
         return None
-    energy = _energy(state)
-    candidates = []
-    for b in _market_buyable(state):
-        if getattr(b, "item_type", None) not in absichten:
-            continue
-        price_f = _endlich(getattr(b, "price_energy", None))
-        if price_f is None or price_f > energy:
-            continue
-        candidates.append((price_f, b))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda p: p[0])
-    return candidates[0][1]
+    return _billigstes_angebot(state, lambda art: art in absichten)
 
 
 def resolve_action_params(state: GameState, action: str, persona: str) -> dict[str, Any]:
@@ -777,6 +855,10 @@ def resolve_action_params(state: GameState, action: str, persona: str) -> dict[s
     if action == "evolve":
         f = _cheapest_evolvable_field(state)
         return {"field_id": str(f.id)} if f else {}
+
+    if action == "upgrade_field":
+        ausbau = _billigstes_ausbau(state)
+        return dict(ausbau[0]) if ausbau else {}
 
     if action == "market_buy":
         b = _gewolltes_buyable(state, persona)
@@ -1086,6 +1168,27 @@ def _delta_start_mission(params: dict[str, Any]) -> dict[str, float]:
     return delta
 
 
+def _delta_evolve(state: GameState) -> dict[str, float]:
+    """Tier-Aufstieg eines Fields: Kosten raus, ein entwickeltes Feld mehr."""
+    f = _cheapest_evolvable_field(state)
+    if f is None:
+        return {}
+    tier = getattr(f, "entity_tier", 1) or 1
+    cost = EVOLUTION_COST_BY_TIER.get(tier, 1_000)
+    return {"energy": -cost, "evolved_fields": +1}
+
+
+def _delta_upgrade_field(state: GameState) -> dict[str, float]:
+    """2.4.1: investment in an own field, like evolve.
+
+    Cost out; no goal metric reads ``field_investment``, so the persona bias decides, as for
+    evolve outside the evolve goal."""
+    ausbau = _billigstes_ausbau(state)
+    if ausbau is None:
+        return {}
+    return {"energy": -ausbau[1], "field_investment": +1}
+
+
 def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dict[str, float]:
     """Schätzt State-Delta für die Action. Wird vom Score genutzt um
     Goal-Distance-Reduktion zu messen."""
@@ -1101,13 +1204,10 @@ def _predict_delta(state: GameState, action: str, params: dict[str, Any]) -> dic
         return _delta_place_cells(params, n_fields)
 
     if action == "evolve":
-        # Tier-Aufstieg eines Fields
-        f = _cheapest_evolvable_field(state)
-        if f is None:
-            return {}
-        tier = getattr(f, "entity_tier", 1) or 1
-        cost = EVOLUTION_COST_BY_TIER.get(tier, 1_000)
-        return {"energy": -cost, "evolved_fields": +1}
+        return _delta_evolve(state)
+
+    if action == "upgrade_field":
+        return _delta_upgrade_field(state)
 
     if action == "market_buy":
         return _delta_market_buy(state)
@@ -1257,7 +1357,7 @@ def _score_bestands_ziele(
     if kind == "patterns_established":
         return 0.8 if delta.get("patterns_established", 0) > 0 else 0.0
     if kind == "active_contracts_at_least":
-        # cos20 #711: wie field_count_at_least — ist das Ziel erreicht, kein Hoechstwert mehr
+        # cosmergon#711: wie field_count_at_least — ist das Ziel erreicht, kein Hoechstwert mehr
         # (Vortex-bright schlug bei 222 aktiven Vertraegen 430 weitere am Tag vor).
         aktiv = len(getattr(state, "active_contracts", ()) or ())
         if int(goal_metric.get("target", 1)) - aktiv <= 0:
@@ -1382,6 +1482,13 @@ def _score_pool(
     return scores
 
 
+def _addiert(a: dict[str, float], b: dict[str, float]) -> dict[str, float]:
+    """Zwei additive Modifikatoren zu einem; ohne ``b`` ist es ``a`` selbst (bit-identisch)."""
+    if not b:
+        return a
+    return {k: a.get(k, 0.0) + b.get(k, 0.0) for k in set(a) | set(b)}
+
+
 class TreeDecider:
     """GOBT-Pattern decider: Subsistenz-Check + Persona-Charakter-Cycle.
 
@@ -1391,7 +1498,46 @@ class TreeDecider:
     """
 
     name: str = "tree"
-    version: str = "2.3.13"
+    version: str = "2.4.2"
+
+    def __init__(self, store: Any | None = None) -> None:
+        """``store``: where the agent keeps its experience (cosmergon#749).
+
+        Any ``cosmergon_agent.experience.ExperienceStore`` — the default is
+        ``FileExperienceStore``. ``None`` (the default): the tree decides exactly as before.
+        """
+        self.store = store
+
+    def _lern_bias(self, state: GameState) -> dict[str, float]:
+        """4. Bias-Schicht (2.4.0): Vorsprung der Zugarten aus der eigenen Erfahrung, ±0,15.
+
+        Leer ohne Speicher oder mit einem SDK ohne ``experience`` — dann bit-identisch.
+        """
+        if self.store is None:
+            return {}
+        try:
+            from cosmergon_agent.experience import advantage_bias, situation
+        except ImportError:
+            return {}
+        return advantage_bias(self.store.advantage(situation(state)))
+
+    async def observe(
+        self, state: GameState, action: str, params: dict[str, Any], result: Any
+    ) -> None:
+        """Was der Zug bewirkt hat, in den Speicher (``ObservingDecider``, cosmergon#749)."""
+        if self.store is None:
+            return
+        try:
+            from cosmergon_agent.experience import direct_effect, situation
+        except ImportError:
+            return
+        record_move = getattr(self.store, "record_move", None)
+        if callable(record_move):
+            record_move(action, situation(state), result)
+            return
+        value = direct_effect(result)
+        if value is not None:
+            self.store.record(action, situation(state), value)
 
     async def decide(
         self, state: GameState, blocked: frozenset[str] = frozenset()
@@ -1429,8 +1575,10 @@ class TreeDecider:
             goal_metric = persona_current_goal(state, persona)
             bias_map = PERSONA_ACTION_BIAS.get(persona, {})
 
-        # Compass-Modifier (additiv)
-        compass_modifier = COMPASS_BIAS.get(compass or "autonomous", {})
+        # Compass-Modifier (additiv) + 2.4.0 Lern-Term aus der eigenen Erfahrung (additiv)
+        compass_modifier = _addiert(
+            COMPASS_BIAS.get(compass or "autonomous", {}), self._lern_bias(state)
+        )
 
         scores = _score_pool(
             state, persona, action_pool, goal_metric, bias_map, compass_modifier, blocked
